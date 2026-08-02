@@ -45,7 +45,7 @@ Cài **Termux** và **Termux:API** từ [F-Droid](https://f-droid.org)
 ### Bước 2: Clone hoặc giải nén dự án
 
 ```bash
-git clone <đường-dẫn-repo-của-bạn> esp32-toolkit
+git clone https://github.com/khahdihdz/esp32-toolkit
 cd esp32-toolkit
 ```
 
