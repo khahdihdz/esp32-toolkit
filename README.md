@@ -74,13 +74,28 @@ USB).
 
 ## 3. Chuẩn bị firmware
 
-Đặt 4 file sau vào thư mục `firmware/`:
+Đặt 4 file sau vào thư mục `firmware/` (bắt buộc):
 
 ```
 firmware/bootloader.bin
 firmware/partitions.bin
 firmware/boot_app0.bin
 firmware/firmware.bin
+```
+
+Nếu project của bạn có dùng LittleFS/SPIFFS (ví dụ dashboard web đọc file
+từ `data/`), thêm file thứ 5 (tùy chọn — `flash.sh` sẽ tự phát hiện):
+
+```
+firmware/littlefs.bin
+```
+
+Offset mặc định để flash `littlefs.bin` là `0x3D0000` (đúng cho partition
+scheme `min_spiffs.csv` của arduino-esp32). Nếu project dùng partition
+scheme khác, ghi đè bằng biến môi trường, ví dụ:
+
+```bash
+LITTLEFS_OFFSET=0x290000 ./flash.sh   # default.csv (4MB, spiffs 0x290000)
 ```
 
 Bạn có thể lấy các file này bằng cách:
@@ -115,7 +130,8 @@ Script sẽ:
 2. Xin quyền USB từ Android (xác nhận hộp thoại trên màn hình)
 3. Kiểm tra đủ 4 file firmware
 4. Flash lần lượt `bootloader.bin → 0x1000`, `partitions.bin → 0x8000`,
-   `boot_app0.bin → 0xe000`, `firmware.bin → 0x10000`
+   `boot_app0.bin → 0xe000`, `firmware.bin → 0x10000`, và
+   `littlefs.bin → $LITTLEFS_OFFSET` (mặc định `0x3D0000`) **nếu file này tồn tại**
 5. Hiển thị %, tốc độ, dung lượng, ETA cho từng file
 6. Tự động thử lại tối đa 3 lần nếu gặp lỗi
 7. Reset ESP32 sau khi flash xong và hiển thị tổng thời gian
@@ -211,7 +227,7 @@ PL2303.
 
 ```
 project/
-├── firmware/                  # Đặt 4 file .bin vào đây trước khi flash
+├── firmware/                  # Đặt 4 file .bin (+ littlefs.bin tùy chọn) vào đây trước khi flash
 ├── tools/
 │   ├── android_esptool.py     # Giao thức SLIP + ESP ROM bootloader (core)
 │   ├── android_usb_raw.py     # Lớp USB mức thấp (libusb1 qua fd của termux-usb)

@@ -5,8 +5,9 @@
 #   ./flash.sh
 #
 # Tự động: phát hiện thiết bị, xin quyền USB, kiểm tra firmware, flash
-# 4 file (bootloader/partitions/boot_app0/firmware), hiển thị %, tốc
-# độ, ETA, retry tối đa 3 lần nếu lỗi, reset ESP32 sau khi flash xong.
+# 4 file (bootloader/partitions/boot_app0/firmware) + firmware/littlefs.bin
+# nếu có (dashboard web, filesystem...), hiển thị %, tốc độ, ETA, retry
+# tối đa 3 lần nếu lỗi, reset ESP32 sau khi flash xong.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tools/common.sh
@@ -14,6 +15,11 @@ source "$SCRIPT_DIR/tools/common.sh"
 
 FLASH_BAUD="${FLASH_BAUD:-460800}"
 MAX_RETRIES=3
+# Offset mặc định của partition "spiffs" trong min_spiffs.csv (arduino-esp32).
+# Nếu project của bạn dùng partition scheme khác (default.csv, default_8MB.csv...)
+# thì offset LittleFS sẽ khác — ghi đè bằng biến môi trường LITTLEFS_OFFSET,
+# ví dụ: LITTLEFS_OFFSET=0x290000 ./flash.sh
+LITTLEFS_OFFSET="${LITTLEFS_OFFSET:-0x3D0000}"
 
 echo -e "${C_BOLD}${C_CYAN}"
 echo "═══════════════════════════════════════════"
@@ -31,6 +37,14 @@ CMD="$CMD 0x1000 \"$FIRMWARE_DIR/bootloader.bin\""
 CMD="$CMD 0x8000 \"$FIRMWARE_DIR/partitions.bin\""
 CMD="$CMD 0xe000 \"$FIRMWARE_DIR/boot_app0.bin\""
 CMD="$CMD 0x10000 \"$FIRMWARE_DIR/firmware.bin\""
+
+if has_littlefs_image; then
+    log_info "Phát hiện firmware/littlefs.bin — sẽ nạp kèm ở offset $LITTLEFS_OFFSET."
+    CMD="$CMD $LITTLEFS_OFFSET \"$FIRMWARE_DIR/littlefs.bin\""
+else
+    log_warn "Không thấy firmware/littlefs.bin — bỏ qua, chỉ nạp firmware chính."
+fi
+
 CMD="$CMD --device"
 
 attempt=1

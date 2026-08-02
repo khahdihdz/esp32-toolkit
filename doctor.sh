@@ -81,6 +81,12 @@ for f in bootloader.bin partitions.bin boot_app0.bin firmware.bin; do
     fi
 done
 
+if [ -f "$FIRMWARE_DIR/littlefs.bin" ]; then
+    check_pass "Firmware: littlefs.bin có sẵn (sẽ được nạp kèm)."
+else
+    log_info "Firmware: littlefs.bin không có — bỏ qua (tùy chọn, chỉ cần nếu project dùng LittleFS)."
+fi
+
 # 7. Quyền truy cập USB hiện tại + phát hiện ESP32
 log_info "Đang dò tìm thiết bị USB đang cắm..."
 DEVICES_JSON="$(timeout 5 termux-usb -l 2>/dev/null)"

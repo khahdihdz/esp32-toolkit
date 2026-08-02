@@ -78,3 +78,10 @@ check_firmware_files() {
         exit 1
     fi
 }
+
+# LittleFS/SPIFFS là tùy chọn: một số project (vd. dashboard web) cần nạp
+# thêm ảnh filesystem, một số project không dùng đến. Trả về 0 (có file)
+# hoặc 1 (không có, bỏ qua bước nạp filesystem).
+has_littlefs_image() {
+    [ -f "$FIRMWARE_DIR/littlefs.bin" ]
+}
