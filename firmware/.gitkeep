@@ -1,0 +1,9 @@
+Đặt 4 file firmware vào thư mục này trước khi chạy ./flash.sh:
+  - bootloader.bin
+  - partitions.bin
+  - boot_app0.bin
+  - firmware.bin
+
+Các file này có thể lấy từ:
+  1. Artifact được build tự động bởi GitHub Actions (.github/workflows/build.yml)
+  2. Build thủ công bằng ESP-IDF hoặc Arduino IDE trên máy tính rồi copy sang điện thoại
