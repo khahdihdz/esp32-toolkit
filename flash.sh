@@ -32,15 +32,15 @@ require_python
 check_firmware_files
 find_device
 
-CMD="python3 \"$TOOLS_DIR/android_esptool.py\" write_flash --flash-baud $FLASH_BAUD"
-CMD="$CMD 0x1000 \"$FIRMWARE_DIR/bootloader.bin\""
-CMD="$CMD 0x8000 \"$FIRMWARE_DIR/partitions.bin\""
-CMD="$CMD 0xe000 \"$FIRMWARE_DIR/boot_app0.bin\""
-CMD="$CMD 0x10000 \"$FIRMWARE_DIR/firmware.bin\""
+CMD="python3 $TOOLS_DIR/android_esptool.py write_flash --flash-baud $FLASH_BAUD"
+CMD="$CMD 0x1000 $FIRMWARE_DIR/bootloader.bin"
+CMD="$CMD 0x8000 $FIRMWARE_DIR/partitions.bin"
+CMD="$CMD 0xe000 $FIRMWARE_DIR/boot_app0.bin"
+CMD="$CMD 0x10000 $FIRMWARE_DIR/firmware.bin"
 
 if has_littlefs_image; then
     log_info "Phát hiện firmware/littlefs.bin — sẽ nạp kèm ở offset $LITTLEFS_OFFSET."
-    CMD="$CMD $LITTLEFS_OFFSET \"$FIRMWARE_DIR/littlefs.bin\""
+    CMD="$CMD $LITTLEFS_OFFSET $FIRMWARE_DIR/littlefs.bin"
 else
     log_warn "Không thấy firmware/littlefs.bin — bỏ qua, chỉ nạp firmware chính."
 fi

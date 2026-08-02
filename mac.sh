@@ -12,5 +12,5 @@ require_termux_api
 require_python
 find_device
 
-CMD="python3 \"$TOOLS_DIR/mac.py\" --device"
+CMD="python3 $TOOLS_DIR/mac.py --device"
 termux-usb -r -e "$CMD" "$DEVICE_PATH"

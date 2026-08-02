@@ -19,12 +19,15 @@ require_termux_api
 require_python
 find_device
 
-CMD="python3 \"$TOOLS_DIR/serial_monitor.py\" --baud $BAUD"
+# Lưu ý: termux-usb -e không chạy qua shell nên không hỗ trợ dấu ngoặc kép
+# bao quanh tham số — LOG_FILE/FILTER có khoảng trắng sẽ bị tách thành
+# nhiều tham số. Dùng đường dẫn/regex không chứa khoảng trắng.
+CMD="python3 $TOOLS_DIR/serial_monitor.py --baud $BAUD"
 if [ -n "$LOG_FILE" ]; then
-    CMD="$CMD --log \"$LOG_FILE\""
+    CMD="$CMD --log $LOG_FILE"
 fi
 if [ -n "$FILTER" ]; then
-    CMD="$CMD --filter \"$FILTER\""
+    CMD="$CMD --filter $FILTER"
 fi
 
 # Lưu ý: serial_monitor.py nhận đường dẫn thiết bị làm THAM SỐ VỊ TRÍ

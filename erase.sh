@@ -18,7 +18,7 @@ require_termux_api
 require_python
 find_device
 
-CMD="python3 \"$TOOLS_DIR/android_esptool.py\" erase_flash --device"
+CMD="python3 $TOOLS_DIR/android_esptool.py erase_flash --device"
 
 if termux-usb -r -e "$CMD" "$DEVICE_PATH"; then
     log_ok "Đã xóa flash thành công."
