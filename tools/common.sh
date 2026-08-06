@@ -3,11 +3,8 @@
 # =========
 # Thư viện bash dùng chung cho toàn bộ script cấp cao (flash.sh,
 # erase.sh, chipinfo.sh, mac.sh, monitor.sh, install.sh, doctor.sh,
-# update.sh). Tuân thủ POSIX một cách hợp lý, nhưng dùng bash vì
-# Termux mặc định có bash.
+# update.sh).
 
-# Không set -u để tránh lỗi với các biến môi trường Termux đặc thù,
-# nhưng vẫn dừng ngay khi có lệnh lỗi.
 set -e
 
 # ANSI colors
@@ -33,55 +30,83 @@ project_root() {
 ROOT_DIR="$(project_root)"
 TOOLS_DIR="$ROOT_DIR/tools"
 FIRMWARE_DIR="$ROOT_DIR/firmware"
+CONFIG_DIR="$ROOT_DIR/config"
 
 require_termux_api() {
     if ! command -v termux-usb >/dev/null 2>&1; then
-        log_error "Không tìm thấy lệnh 'termux-usb'."
-        log_error "Chạy: pkg install termux-api"
-        log_error "Và cài ứng dụng 'Termux:API' từ F-Droid hoặc Google Play."
+        log_error "Khong tim thay lenh 'termux-usb'."
+        log_error "Chay: pkg install termux-api"
+        log_error "Va cai ung dung 'Termux:API' tu F-Droid hoac Google Play."
         exit 1
     fi
 }
 
 require_python() {
     if ! command -v python3 >/dev/null 2>&1; then
-        log_error "Không tìm thấy python3. Chạy: pkg install python"
+        log_error "Khong tim thay python3. Chay: pkg install python"
         exit 1
     fi
 }
 
-# Tìm đường dẫn thiết bị ESP32, hỗ trợ chọn nếu có nhiều thiết bị.
-# Kết quả được in ra bằng python (usb_helper) và gán vào biến toàn cục
-# DEVICE_PATH.
+# Chỉ liệt kê đường dẫn thiết bị (KHÔNG xin quyền, KHÔNG mở fd) rồi
+# gán vào biến toàn cục DEVICE_PATH. Việc xin quyền thật sự (termux-usb
+# -r -e) chỉ diễn ra MỘT LẦN, ngay tại lệnh thao tác thật sự (xem
+# flash.sh/erase.sh/...), không phải ở đây. Đây là điểm khác biệt cố
+# ý so với V1 để tránh lỗi "Permission denied" do xin quyền 2 lần.
 find_device() {
     require_termux_api
     require_python
-    log_info "Đang dò tìm thiết bị ESP32 qua USB..."
-    DEVICE_PATH="$(python3 "$TOOLS_DIR/select_device.py")"
+    log_info "Dang do tim thiet bi USB dang cam (khong can quyen)..."
+    DEVICE_PATH="$(python3 "$TOOLS_DIR/usb_detect.py")"
     if [ -z "$DEVICE_PATH" ]; then
-        log_error "Không chọn được thiết bị."
+        log_error "Khong chon duoc thiet bi."
         exit 1
     fi
-    log_ok "Đã chọn thiết bị: $DEVICE_PATH"
+    log_ok "Da chon thiet bi: $DEVICE_PATH (se xin quyen Android trong buoc tiep theo)"
 }
 
 check_firmware_files() {
     local missing=0
     for f in bootloader.bin partitions.bin boot_app0.bin firmware.bin; do
         if [ ! -f "$FIRMWARE_DIR/$f" ]; then
-            log_error "Thiếu file firmware: firmware/$f"
+            log_error "Thieu file firmware: firmware/$f"
             missing=1
         fi
     done
     if [ "$missing" -eq 1 ]; then
-        log_error "Vui lòng đặt đầy đủ file firmware vào thư mục firmware/ trước khi flash."
+        log_error "Vui long dat day du file firmware vao thu muc firmware/ truoc khi flash."
         exit 1
     fi
 }
 
-# LittleFS/SPIFFS là tùy chọn: một số project (vd. dashboard web) cần nạp
-# thêm ảnh filesystem, một số project không dùng đến. Trả về 0 (có file)
-# hoặc 1 (không có, bỏ qua bước nạp filesystem).
 has_littlefs_image() {
     [ -f "$FIRMWARE_DIR/littlefs.bin" ]
+}
+
+# Tu dong tim offset THAT SU cua vung LittleFS/SPIFFS bang cach doc
+# truc tiep firmware/partitions.bin (chinh xac cho MOI partition
+# scheme, khong con phai doan). Neu nguoi dung tu dat bien moi truong
+# LITTLEFS_OFFSET thi uu tien dung gia tri do (bo qua tu dong do).
+# Neu khong doc duoc / khong tim thay, fallback ve 0x290000 (offset
+# cua default.csv) va canh bao ro rang day chi la doan.
+resolve_littlefs_offset() {
+    if [ -n "$LITTLEFS_OFFSET" ]; then
+        log_info "Dung LITTLEFS_OFFSET nguoi dung tu dat: $LITTLEFS_OFFSET"
+        echo "$LITTLEFS_OFFSET"
+        return
+    fi
+
+    if [ -f "$FIRMWARE_DIR/partitions.bin" ]; then
+        local detected
+        detected="$(python3 "$TOOLS_DIR/partition_table.py" "$FIRMWARE_DIR/partitions.bin" --littlefs-offset-only 2>/dev/null)"
+        if [ -n "$detected" ]; then
+            log_ok "Tu dong phat hien offset LittleFS tu partitions.bin: $detected"
+            echo "$detected"
+            return
+        fi
+        log_warn "Khong doc duoc offset LittleFS tu partitions.bin, dung gia tri doan 0x290000."
+    else
+        log_warn "Khong thay firmware/partitions.bin de tu dong do offset, dung gia tri doan 0x290000."
+    fi
+    echo "0x290000"
 }

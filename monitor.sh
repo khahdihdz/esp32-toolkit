@@ -2,12 +2,12 @@
 # monitor.sh
 # ==========
 # Serial Monitor cho ESP32.
-#   ./monitor.sh                     # baud mặc định 115200
-#   BAUD=921600 ./monitor.sh         # đổi baud
-#   LOG_FILE=session.log ./monitor.sh  # lưu log ra file
-#   FILTER='ERROR' ./monitor.sh      # chỉ hiện dòng khớp regex
+#   ./monitor.sh                       # baud mac dinh 115200
+#   BAUD=921600 ./monitor.sh           # doi baud (115200/230400/460800/921600)
+#   LOG_FILE=session.log ./monitor.sh  # luu log ra file
+#   FILTER='ERROR' ./monitor.sh        # chi hien dong khop regex
 #
-# Nhấn Ctrl+C để thoát.
+# Nhan Ctrl+C de thoat.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tools/common.sh
@@ -19,9 +19,9 @@ require_termux_api
 require_python
 find_device
 
-# Lưu ý: termux-usb -e không chạy qua shell nên không hỗ trợ dấu ngoặc kép
-# bao quanh tham số — LOG_FILE/FILTER có khoảng trắng sẽ bị tách thành
-# nhiều tham số. Dùng đường dẫn/regex không chứa khoảng trắng.
+# Luu y: termux-usb -e khong chay qua shell nen khong ho tro dau ngoac
+# kep bao quanh tham so — LOG_FILE/FILTER co khoang trang se bi tach
+# thanh nhieu tham so. Dung duong dan/regex khong chua khoang trang.
 CMD="python3 $TOOLS_DIR/serial_monitor.py --baud $BAUD"
 if [ -n "$LOG_FILE" ]; then
     CMD="$CMD --log $LOG_FILE"
@@ -29,8 +29,11 @@ fi
 if [ -n "$FILTER" ]; then
     CMD="$CMD --filter $FILTER"
 fi
+if [ -n "$NO_RESET" ]; then
+    CMD="$CMD --no-reset"
+fi
 
-# Lưu ý: serial_monitor.py nhận đường dẫn thiết bị làm THAM SỐ VỊ TRÍ
-# cuối cùng (không phải --device), vì termux-usb tự thêm nó vào cuối
-# dòng lệnh -e.
+# serial_monitor.py nhan duong dan thiet bi lam THAM SO VI TRI cuoi
+# cung (khong phai --device), vi termux-usb tu them no vao cuoi dong
+# lenh -e.
 termux-usb -r -e "$CMD" "$DEVICE_PATH"

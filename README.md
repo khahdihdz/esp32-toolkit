@@ -1,293 +1,276 @@
-# ESP32 Android Toolkit — Flash/Erase/Monitor ESP32 hoàn toàn trên điện thoại
+# ESP32 Android Toolkit V2
 
-Bộ công cụ này cho phép bạn **build, flash, erase, đọc thông tin chip,
-đọc MAC, và mở Serial Monitor cho ESP32/ESP8266 trực tiếp trên điện
-thoại Android qua Termux — không cần máy tính, không cần PlatformIO**.
+Nạp firmware ESP32 hoàn toàn trong **Termux** qua cáp OTG, không cần:
 
-Hỗ trợ Android 10 → 15, Termux (bản F-Droid), Python 3.14, kết nối qua
-cáp OTG + USB Host của điện thoại.
+- root
+- PlatformIO
+- Arduino IDE
+- adb
+- `serial.tools.list_ports` / enumerate `/dev/ttyUSB*`
 
----
+Hoạt động dựa 100% trên **Android USB Host API** (thông qua `termux-usb`
+của gói Termux:API) + `libusb1`, tự triển khai lại giao thức ROM
+bootloader của ESP32 và driver cho các chip USB-UART phổ biến bằng
+Python thuần.
 
-## 1. Vì sao không dùng PlatformIO / esptool gốc?
+Hỗ trợ Android 10 → 16. Đã thử trên HONOR MagicOS, và tương thích thiết
+kế với Xiaomi HyperOS, Samsung OneUI, OPPO ColorOS, OnePlus OxygenOS,
+Pixel Android (mọi ROM có hỗ trợ USB Host / OTG chuẩn AOSP).
 
-`esptool.py` gốc và PlatformIO dùng `pyserial` để enumerate cổng
-`/dev/ttyUSB*`, `/dev/ttyACM*` — điều này **không hoạt động trên
-Android** vì hệ điều hành sandbox không cho ứng dụng thường (kể cả
-Termux) liệt kê hay mở trực tiếp các file thiết bị trong `/dev`.
+## Vì sao có bản V2
 
-Bộ công cụ này viết lại hoàn toàn phần giao tiếp USB, đi qua
-**Android USB Host API** thông qua lệnh `termux-usb` (gói
-`termux-api`), rồi tự triển khai giao thức UART (SLIP) và giao thức
-ROM bootloader của ESP32 bằng Python thuần + `libusb1`.
+Bản V1 dùng cùng nền tảng Android USB Host + termux-usb, nhưng có một
+lỗi kiến trúc: bước "chọn thiết bị" xin quyền USB một lần (để đọc
+VID/PID lọc chip), rồi bước "thao tác" (flash/monitor/...) xin quyền
+**lần thứ hai** cho cùng thiết bị đó. Hai vòng xin quyền tách biệt là
+nguyên nhân chính gây lỗi `Permission denied` ngắt quãng — người dùng
+thường chỉ để ý bấm "Allow" ở hộp thoại đầu rồi bỏ qua hộp thoại sau,
+hoặc phiên quyền hết hạn giữa hai bước.
 
-Kết quả: không còn lỗi kiểu:
+**V2 sửa tận gốc:** bước chọn thiết bị chỉ dùng `termux-usb -l` (liệt
+kê đường dẫn thô, không cần quyền). Toàn bộ phần còn lại — đọc VID/PID,
+chọn driver UART, chạy giao thức ROM loader, ghi/xóa/đọc flash — diễn
+ra **bên trong một phiên `termux-usb -r -e` DUY NHẤT**. Mỗi lần bạn
+chạy `flash.sh`/`erase.sh`/`chipinfo.sh`/`mac.sh`/`monitor.sh`, Android
+chỉ hỏi quyền đúng **một lần**.
+
+## Kiến trúc
 
 ```
-ImportError: Sorry: no implementation for your platform ('posix')
+esp32-toolkit/
+├── menu.sh              # Menu trung tâm
+├── install.sh            # Cài dependency (1 lệnh)
+├── doctor.sh              # Chẩn đoán môi trường
+├── flash.sh                # Flash firmware
+├── erase.sh                # Xóa toàn bộ flash
+├── monitor.sh               # Serial monitor
+├── chipinfo.sh                # Thông tin chip + MAC + magic register
+├── mac.sh                      # Chỉ in MAC
+├── update.sh                    # git pull + cập nhật dependency
+├── firmware/                     # Đặt file .bin vào đây
+│   ├── bootloader.bin
+│   ├── boot_app0.bin
+│   ├── partitions.bin
+│   ├── firmware.bin
+│   └── littlefs.bin (tùy chọn)
+├── config/
+│   ├── config.json          # baudrate, timeout, danh sách chip UART đã biết...
+│   └── partition.json       # offset flash mặc định, danh sách file bắt buộc/tùy chọn
+├── tools/
+│   ├── logger.py            # Log màu ANSI
+│   ├── config.py            # Nạp config.json / partition.json
+│   ├── progress.py          # Progress bar + spinner
+│   ├── utils.py              # format số liệu, retry, kiểm tra file...
+│   ├── android_usb.py         # Lớp USB mức thấp (termux-usb + libusb1)
+│   ├── usb_bridge.py           # Giao diện UartBridge trừu tượng + factory
+│   ├── cp210x.py                 # Driver CP2102/CP2102N/CP2105
+│   ├── ch340.py                   # Driver CH340/CH340C/CH9102
+│   ├── ftdi.py                     # Driver FT232R/FT231X
+│   ├── cdc_acm.py                   # Driver CDC-ACM chuẩn (USB native ESP32-S2/S3/C3/C6/H2)
+│   ├── usb_detect.py                 # Liệt kê + chọn thiết bị (KHÔNG xin quyền)
+│   ├── esp_loader.py                  # Giao thức SLIP + ROM loader ESP32
+│   ├── bootloader.py                   # Ghép USB → UartBridge → EspRomLoader, connect()
+│   ├── firmware.py                      # write_flash/erase/verify/read/image_info cấp cao
+│   ├── esptool_android.py                # CLI thống nhất (subcommands)
+│   ├── serial_monitor.py                  # Serial monitor real-time, auto reconnect
+│   └── common.sh                           # Thư viện bash dùng chung
+└── README.md
 ```
 
-hoặc
+### Luồng dữ liệu
 
 ```
-don't know how to enumerate ttys on this system.
+menu.sh / flash.sh / erase.sh / chipinfo.sh / mac.sh / monitor.sh
+        │
+        ├─ tools/usb_detect.py  (termux-usb -l, KHÔNG cần quyền)
+        │
+        └─ termux-usb -r -e "<lệnh python>" <device_path>   ← 1 LẦN DUY NHẤT
+                │
+                ├─ tools/android_usb.py     (mở fd đã cấp quyền, wrapSysDevice)
+                ├─ tools/usb_bridge.py      (chọn driver theo VID/PID)
+                │     ├─ cp210x.py / ch340.py / ftdi.py / cdc_acm.py
+                ├─ tools/esp_loader.py      (SLIP + giao thức ROM loader)
+                ├─ tools/bootloader.py      (connect/sync/detect chip)
+                ├─ tools/firmware.py        (flash/erase/verify/read)
+                └─ tools/esptool_android.py (CLI gọi tất cả các lớp trên)
 ```
 
----
+## Chip ESP32 được hỗ trợ
 
-## 2. Cài đặt
+Tự động nhận diện qua magic register sau khi `sync`:
 
-### Bước 1: Cài Termux
+`ESP32`, `ESP32-S2`, `ESP32-S3`, `ESP32-C2`, `ESP32-C3`, `ESP32-C6`, `ESP32-H2`
 
-Cài **Termux** và **Termux:API** từ [F-Droid](https://f-droid.org)
-(khuyến nghị, không dùng bản Google Play vì đã ngừng cập nhật).
+## Driver UART-USB được hỗ trợ
 
-### Bước 2: Clone hoặc giải nén dự án
+| Chip | VID:PID | Driver |
+|---|---|---|
+| CP2102 / CP2102N | 10C4:EA60 | `cp210x.py` |
+| CP2105 | 10C4:EA70 | `cp210x.py` |
+| CH340 / CH340C | 1A86:7523 | `ch340.py` |
+| CH9102 | 1A86:55D4 | `ch340.py` |
+| FT232R | 0403:6001 | `ftdi.py` |
+| FT231X | 0403:6015 | `ftdi.py` |
+| USB native (ESP32-S2/S3/C3/C6/H2) | 303A:xxxx | `cdc_acm.py` |
+
+Board dùng PL2303 hoặc chip UART khác chưa được liệt kê có thể thêm dễ
+dàng bằng cách tạo file driver mới kế thừa `UartBridge` trong
+`tools/usb_bridge.py` rồi đăng ký vào `_driver_classes()`.
+
+## Cài đặt
 
 ```bash
-git clone <đường-dẫn-repo-của-bạn> esp32-toolkit
-cd esp32-toolkit
+pkg install git -y
+git clone <repo-url> esp32-toolkit && cd esp32-toolkit
+bash install.sh
 ```
 
-### Bước 3: Chạy install.sh
+`install.sh` tự cài: `python`, `clang`, `make`, `cmake`, `termux-api`,
+`jq`, `libusb`, và thư viện Python `libusb1`.
+
+Sau khi cài, bạn cần cài thêm ứng dụng **Termux:API** (F-Droid hoặc
+Google Play) — đây là phần bắt buộc để `termux-usb` hoạt động.
+
+## Sử dụng
+
+Cách đơn giản nhất — dùng menu:
 
 ```bash
-chmod +x *.sh
-./install.sh
+./menu.sh
 ```
 
-Script sẽ tự động:
-
-- Cập nhật & nâng cấp gói Termux
-- Cài `git, python, clang, make, cmake, termux-api, jq, unzip, wget, curl, coreutils, usbutils, libusb`
-- Nâng cấp `pip`
-- Cài thư viện Python `libusb1`
-- Kiểm tra lại toàn bộ môi trường
-
-### Bước 4: Cấp quyền cho Termux:API
-
-Mở ứng dụng **Termux:API** ít nhất 1 lần và cấp mọi quyền được yêu cầu
-(đặc biệt là quyền hiển thị thông báo, cần cho hộp thoại xin quyền
-USB).
-
----
-
-## 3. Chuẩn bị firmware
-
-Đặt 4 file sau vào thư mục `firmware/` (bắt buộc):
-
-```
-firmware/bootloader.bin
-firmware/partitions.bin
-firmware/boot_app0.bin
-firmware/firmware.bin
-```
-
-Nếu project của bạn có dùng LittleFS/SPIFFS (ví dụ dashboard web đọc file
-từ `data/`), thêm file thứ 5 (tùy chọn — `flash.sh` sẽ tự phát hiện):
-
-```
-firmware/littlefs.bin
-```
-
-Offset mặc định để flash `littlefs.bin` là `0x3D0000` (đúng cho partition
-scheme `min_spiffs.csv` của arduino-esp32). Nếu project dùng partition
-scheme khác, ghi đè bằng biến môi trường, ví dụ:
+Hoặc gọi trực tiếp từng script:
 
 ```bash
-LITTLEFS_OFFSET=0x290000 ./flash.sh   # default.csv (4MB, spiffs 0x290000)
+./doctor.sh      # kiểm tra môi trường trước
+./flash.sh        # nạp firmware/*.bin vào ESP32 qua OTG
+./erase.sh          # xóa toàn bộ flash
+./chipinfo.sh          # xem chip, MAC, magic register
+./mac.sh                 # chỉ in MAC
+./monitor.sh                # serial monitor, Ctrl+C để thoát
+./update.sh                    # cập nhật toolkit
 ```
 
-Bạn có thể lấy các file này bằng cách:
+### Flash
 
-- Tải artifact từ GitHub Actions (workflow tự build khi bạn push code
-  vào `main`/`master`, xem `.github/workflows/build.yml`)
-- Build bằng ESP-IDF hoặc Arduino IDE trên máy tính rồi copy sang máy
-
----
-
-## 4. Sử dụng
-
-### Kiểm tra môi trường
-
-```bash
-./doctor.sh
-```
-
-Kiểm tra Python, Android version, USB Host, OTG, Termux:API, firmware,
-quyền USB và thiết bị đang cắm. Nếu có lỗi, doctor.sh sẽ giải thích rõ
-nguyên nhân và cách khắc phục.
-
-### Flash firmware
+Đặt file `.bin` vào thư mục `firmware/` (đã có sẵn ví dụ), sau đó:
 
 ```bash
 ./flash.sh
 ```
 
-Script sẽ:
-
-1. Tự phát hiện ESP32 qua USB (hiện menu nếu có nhiều thiết bị)
-2. Xin quyền USB từ Android (xác nhận hộp thoại trên màn hình)
-3. Kiểm tra đủ 4 file firmware
-4. Flash lần lượt `bootloader.bin → 0x1000`, `partitions.bin → 0x8000`,
-   `boot_app0.bin → 0xe000`, `firmware.bin → 0x10000`, và
-   `littlefs.bin → $LITTLEFS_OFFSET` (mặc định `0x3D0000`) **nếu file này tồn tại**
-5. Hiển thị %, tốc độ, dung lượng, ETA cho từng file
-6. Tự động thử lại tối đa 3 lần nếu gặp lỗi
-7. Reset ESP32 sau khi flash xong và hiển thị tổng thời gian
-
-Đổi tốc độ baud khi flash (mặc định `460800`):
+Biến môi trường tùy chỉnh:
 
 ```bash
-FLASH_BAUD=115200 ./flash.sh
+FLASH_BAUD=115200 ./flash.sh          # baud thấp hơn nếu cáp/board không ổn định
+LITTLEFS_OFFSET=0x290000 ./flash.sh   # đổi offset LittleFS (partition scheme khác)
+MAX_RETRIES=5 ./flash.sh              # tăng số lần thử lại
 ```
 
-### Xóa toàn bộ flash
+Offset mặc định (theo `min_spiffs.csv`, flash 4MB, arduino-esp32):
 
-```bash
-./erase.sh
-```
+| Phần | Offset |
+|---|---|
+| bootloader.bin | `0x1000` |
+| partitions.bin | `0x8000` |
+| boot_app0.bin | `0xe000` |
+| firmware.bin | `0x10000` |
+| littlefs.bin (tùy chọn) | `0x3D0000` (hoặc `0x290000` nếu dùng scheme 8MB) |
 
-### Xem thông tin chip
+Có thể sửa trực tiếp trong `config/partition.json` nếu muốn thay đổi
+lâu dài thay vì truyền biến môi trường mỗi lần.
 
-```bash
-./chipinfo.sh
-```
-
-Hiển thị: Chip, Revision, Crystal, MAC, Flash Size, Flash Mode, Flash
-Speed, Features.
-
-### Đọc địa chỉ MAC
-
-```bash
-./mac.sh
-```
-
-In:
-
-```
-MAC:
-AA:BB:CC:DD:EE:FF
-```
-
-### Serial Monitor
+### Monitor
 
 ```bash
 ./monitor.sh
+BAUD=921600 ./monitor.sh
+LOG_FILE=session.log ./monitor.sh
+FILTER='ERROR' ./monitor.sh
 ```
 
-Tùy chọn:
+### Dùng trực tiếp CLI Python (nâng cao)
 
 ```bash
-BAUD=921600 ./monitor.sh              # đổi baud
-LOG_FILE=session.log ./monitor.sh     # lưu log ra file
-FILTER='ERROR' ./monitor.sh           # chỉ hiện dòng khớp regex
+python3 tools/esptool_android.py image_info firmware/firmware.bin
+# Các subcommand khác (sync/chip_id/read_mac/flash_id/erase_flash/
+# write_flash/flash_auto/read_flash/verify_flash/reset) đều cần chạy
+# bên trong một phiên termux-usb -r -e, xem cách flash.sh gọi.
 ```
 
-Nhấn `Ctrl+C` để thoát. Có timestamp, màu theo mức log (E/W/I của
-ESP-IDF), UTF-8, và tự động kết nối lại nếu mất kết nối USB.
+## Cấu hình (`config/`)
 
-### Cập nhật dự án
+- **`config.json`**: baudrate mặc định (reset/flash/monitor), số lần
+  retry, timeout xin quyền USB, danh sách chip UART đã biết (VID:PID
+  → tên hiển thị), danh sách chip ESP32 được hỗ trợ.
+- **`partition.json`**: offset flash mặc định cho từng phần
+  (bootloader/partitions/boot_app0/firmware/littlefs), đường dẫn file
+  tương ứng trong `firmware/`, và danh sách file bắt buộc/tùy chọn.
+
+Sửa 2 file này để tùy biến toolkit mà không cần đụng vào code Python.
+
+## Doctor — chẩn đoán
 
 ```bash
-./update.sh
+./doctor.sh
 ```
 
----
+Kiểm tra: Python, phiên bản Android, USB Host/OTG, `termux-api`, thư
+viện `libusb1`, file firmware, file cấu hình, và thiết bị USB đang cắm
+(chỉ liệt kê, không xin quyền).
 
-## 5. Cấp quyền USB trên Android
+## Troubleshooting
 
-Mỗi lần chạy `flash.sh`, `erase.sh`, `chipinfo.sh`, `mac.sh`, hoặc
-`monitor.sh`, Android sẽ hiện **hộp thoại xin quyền truy cập USB**.
-Bạn cần:
+**"Permission denied" khi flash**
+Đây chính là lỗi kiến trúc mà V2 khắc phục. Nếu vẫn gặp: đảm bảo bạn
+đang dùng V2 (chỉ có DUY NHẤT một hộp thoại xin quyền USB xuất hiện
+mỗi lần chạy lệnh). Nếu hộp thoại không hiện ra, kiểm tra ứng dụng
+Termux:API đã cài và Termux có quyền hiển thị overlay/notification.
 
-1. Nhấn vào thông báo (hoặc mở lại app nếu popup bị ẩn)
-2. Chọn **"OK"/"Cho phép"**
-3. Tick vào **"Sử dụng theo mặc định cho thiết bị này"** để không phải
-   xác nhận lại mỗi lần (không bắt buộc)
+**Không tìm thấy thiết bị USB**
+- Cáp OTG phải hỗ trợ truyền dữ liệu (nhiều cáp OTG rẻ chỉ hỗ trợ sạc).
+- Điện thoại phải hỗ trợ USB Host (đa số flagship có, một số máy giá
+  rẻ không có).
+- Thử `./doctor.sh` để xem `termux-usb -l` có trả về gì không.
 
-Nếu popup không hiện, hãy đảm bảo Termux:API đã được cấp quyền thông
-báo (Settings → Apps → Termux:API → Notifications → Allow).
+**Sync/connect thất bại (không dò được ROM bootloader)**
+- Một số board clone không tự động vào chế độ download qua DTR/RTS —
+  giữ nút `BOOT`/`IO0` khi cắm cáp, thả ra sau khi thấy log "Đang kết
+  nối...".
+- Thử `FLASH_BAUD=115200 ./flash.sh` nếu board/cáp không ổn định ở
+  baud cao.
 
----
+**Không hỗ trợ chip USB-UART**
+Kiểm tra VID/PID board của bạn (thường in trên chip hoặc tra theo tên
+chip) và so với bảng driver ở trên. Nếu chip chưa được hỗ trợ, có thể
+thêm driver mới theo mẫu `tools/cp210x.py`.
 
-## 6. Chip và USB-UART được hỗ trợ
+**CDC-ACM (ESP32-S2/S3/C3/C6/H2 dùng cổng USB native) không nhận dữ liệu**
+Một số firmware chỉ xuất log ra cổng USB-CDC khi DTR được bật —
+`cdc_acm.py` đã tự bật DTR+RTS khi mở, nhưng nếu firmware dùng
+USB-Serial-JTAG (không phải USB-CDC), hãy kiểm tra `idf.py menuconfig`
+→ Component config → ESP System Settings → Channel for console output
+được đặt đúng cổng.
 
-**Chip ESP:** ESP8266, ESP32, ESP32-S2, ESP32-S3, ESP32-C2, ESP32-C3,
-ESP32-C6, ESP32-H2 (nhận diện tự động qua thanh ghi magic number; các
-biến thể ROM chưa có trong bảng sẽ được báo là "không xác định" kèm
-giá trị magic để bạn có thể bổ sung vào `tools/android_esptool.py`).
+## FAQ
 
-**USB-UART:** CP2102/CP2102N, CH340/CH340C, CH9102, FT232/FT231X,
-PL2303.
+**Có cần root không?** Không. Toàn bộ dựa trên Android USB Host API
+chuẩn của Termux:API, không truy cập `/dev/bus/usb/*` trực tiếp bằng
+quyền hệ thống.
 
----
+**Có cần cài PlatformIO/Arduino IDE trên máy tính không?** Không, chỉ
+cần biên dịch firmware `.bin` từ máy tính (hoặc CI) một lần rồi copy
+`.bin` vào điện thoại; toolkit chỉ lo phần nạp qua OTG.
 
-## 7. Kiến trúc dự án
+**Toolkit có tự build firmware từ source `.ino`/`.py` không?** Không.
+Toolkit chỉ nạp file `.bin` đã biên dịch sẵn (đặt vào `firmware/`).
 
-```
-project/
-├── firmware/                  # Đặt 4 file .bin (+ littlefs.bin tùy chọn) vào đây trước khi flash
-├── tools/
-│   ├── android_esptool.py     # Giao thức SLIP + ESP ROM bootloader (core)
-│   ├── android_usb_raw.py     # Lớp USB mức thấp (libusb1 qua fd của termux-usb)
-│   ├── uart_bridge.py         # Driver CP210x/CH340/FT232/PL2303
-│   ├── usb_helper.py          # Liệt kê & xin quyền USB qua termux-usb
-│   ├── select_device.py       # Chọn thiết bị (dùng bởi common.sh)
-│   ├── serial_monitor.py      # Serial Monitor
-│   ├── chipinfo.py / mac.py   # Wrapper hiển thị thông tin
-│   ├── logger.py              # Log màu ANSI
-│   ├── utils.py                # Progress bar, retry, format, v.v.
-│   └── common.sh              # Thư viện bash dùng chung
-├── flash.sh / erase.sh / chipinfo.sh / mac.sh / monitor.sh
-├── install.sh / doctor.sh / update.sh
-└── .github/workflows/build.yml
-```
+**Vì sao không dùng lại `esptool.py` gốc?** `esptool.py` gốc dùng
+pySerial, cần `/dev/ttyUSB*` — thứ mà sandbox Android không cấp cho
+ứng dụng thông thường. Toolkit triển khai lại đúng giao thức ROM
+loader công khai của Espressif bằng Python thuần trên nền Android USB
+Host API.
 
----
+## Đã kiểm thử
 
-## 8. Troubleshooting
-
-| Vấn đề | Nguyên nhân thường gặp | Cách khắc phục |
-|---|---|---|
-| Không phát hiện thiết bị USB | Cáp chỉ hỗ trợ sạc, không hỗ trợ data | Đổi cáp OTG hỗ trợ truyền dữ liệu |
-| `termux-usb: command not found` | Chưa cài `termux-api` | `pkg install termux-api` + cài app Termux:API |
-| Không hiện popup xin quyền | Termux:API chưa được cấp quyền thông báo | Vào Settings → Apps → Termux:API → cấp quyền |
-| `Không thể kết nối với ESP32` | Board chưa vào chế độ nạp | Giữ nút BOOT/IO0 khi cắm cáp, hoặc dùng board có auto-reset |
-| Flash bị lỗi giữa chừng | Baudrate quá cao cho cáp/board | `FLASH_BAUD=115200 ./flash.sh` |
-| `Không hỗ trợ chip USB-UART...` | Board dùng chip lạ | Thêm VID/PID vào `uart_bridge.py` và `usb_helper.py` |
-| Không parse được `termux-usb -l` | Chưa cắm thiết bị hoặc quyền OTG bị chặn hệ thống | Kiểm tra `lsusb`, thử cáp/adapter khác |
-
----
-
-## 9. FAQ
-
-**Có cần root máy không?**
-Không. Toàn bộ luồng dùng Android USB Host API chính thức qua
-Termux:API, không cần root.
-
-**Vì sao không dùng luôn pySerial?**
-Vì Android sandbox chặn truy cập `/dev/ttyUSB*`/`/dev/ttyACM*` với
-ứng dụng thông thường; chỉ có Android USB Host API (qua `termux-usb`)
-được phép, và API đó chỉ cấp raw USB access, không cấp giao diện tty —
-nên phải tự triển khai giao thức UART qua USB thay vì dùng pySerial.
-
-**Có build firmware trực tiếp trên điện thoại được không?**
-Được, nếu bạn cài ESP-IDF trong Termux (khá nặng và cần proot hoặc
-container). Cách khuyến nghị và ổn định hơn là để GitHub Actions build
-sẵn rồi tải file `.bin` xuống điện thoại.
-
-**Flash được ESP8266 không?**
-Được, giao thức SLIP + ROM loader tương tự ESP32, chỉ khác offset ghi
-flash tùy theo file/board của bạn.
-
-**Có hỗ trợ nhiều board cắm cùng lúc không?**
-Có. Nếu có nhiều thiết bị USB, script sẽ hiện menu để bạn chọn.
-
----
-
-## 10. Giấy phép
-
-Dự án tự phát triển cho mục đích cá nhân/học tập. Giao thức SLIP và
-ROM bootloader của ESP32 là giao thức công khai do Espressif tài liệu
-hóa.
+ESP32 DevKit V1 (CP2102) qua cáp OTG trên **HONOR X7d chạy MagicOS 9**.

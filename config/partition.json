@@ -1,0 +1,23 @@
+{
+  "_comment": "Offset mac dinh cho so do partition pho bien (arduino-esp32 / min_spiffs.csv, flash 4MB). Sua lai neu project cua ban dung partition scheme khac, hoac ghi de bang bien moi truong / tham so dong lenh.",
+  "offsets": {
+    "bootloader": "0x1000",
+    "partitions": "0x8000",
+    "boot_app0": "0xe000",
+    "firmware": "0x10000",
+    "littlefs": "0x3D0000"
+  },
+  "files": {
+    "bootloader": "firmware/bootloader.bin",
+    "partitions": "firmware/partitions.bin",
+    "boot_app0": "firmware/boot_app0.bin",
+    "firmware": "firmware/firmware.bin",
+    "littlefs": "firmware/littlefs.bin"
+  },
+  "littlefs_offset_presets": {
+    "min_spiffs_4MB": "0x3D0000",
+    "default_8MB": "0x290000"
+  },
+  "required_files": ["bootloader", "partitions", "boot_app0", "firmware"],
+  "optional_files": ["littlefs"]
+}

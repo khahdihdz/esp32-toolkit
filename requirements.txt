@@ -1,8 +1,8 @@
-# Thư viện Python cần thiết cho bộ công cụ ESP32 Android/Termux.
-# Cài bằng: pip install -r requirements.txt --break-system-packages
+# Thu vien Python can thiet cho ESP32 Android Toolkit V2 (Termux).
+# Cai bang: pip install -r requirements.txt --break-system-packages
 #
-# Lưu ý: KHÔNG có pyserial trong danh sách này. Toàn bộ giao tiếp UART
-# được thực hiện trực tiếp qua USB (libusb) thay vì qua tty, vì Android
-# không cấp quyền enumerate/tty cho ứng dụng thông thường.
+# Luu y: KHONG co pyserial trong danh sach nay. Toan bo giao tiep UART
+# duoc thuc hien truc tiep qua USB (libusb) thay vi qua tty, vi Android
+# khong cap quyen enumerate/tty cho ung dung thong thuong.
 
 libusb1>=3.1.0

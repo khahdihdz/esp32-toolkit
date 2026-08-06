@@ -1,7 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # chipinfo.sh
 # ===========
-# Hiển thị thông tin chi tiết chip ESP32 đang cắm.
+# Hien thi thong tin chi tiet chip ESP32 dang cam (chip, MAC, magic
+# register).
 #   ./chipinfo.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,5 +13,5 @@ require_termux_api
 require_python
 find_device
 
-CMD="python3 $TOOLS_DIR/chipinfo.py --device"
+CMD="python3 $TOOLS_DIR/esptool_android.py chip_id --device"
 termux-usb -r -e "$CMD" "$DEVICE_PATH"

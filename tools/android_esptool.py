@@ -640,6 +640,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+    print("ARGS =", args)
+    print("DEVICE =", args.device)
     try:
         return args.func(args)
     except (EspLoaderError, UartBridgeError, AndroidUsbError) as exc:

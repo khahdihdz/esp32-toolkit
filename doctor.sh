@@ -1,14 +1,14 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # doctor.sh
 # =========
-# Kiểm tra toàn diện môi trường trước khi flash ESP32: Python, Android
-# version, USB Host, OTG, Termux API, firmware, quyền USB, phát hiện
-# ESP32 đang cắm.
+# Kiem tra toan dien moi truong truoc khi flash ESP32: Python, Android
+# version, USB Host, OTG, Termux API, firmware, cau hinh, thiet bi
+# USB dang cam (chi liet ke, KHONG xin quyen).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tools/common.sh
 source "$SCRIPT_DIR/tools/common.sh"
-set +e  # doctor.sh không nên dừng giữa chừng khi 1 mục kiểm tra lỗi
+set +e  # doctor.sh khong nen dung giua chung khi 1 muc kiem tra loi
 
 PASS=0
 FAIL=0
@@ -19,9 +19,9 @@ check_fail() { log_error "$1"; FAIL=$((FAIL + 1)); }
 check_warn() { log_warn "$1"; WARN=$((WARN + 1)); }
 
 echo -e "${C_BOLD}${C_CYAN}"
-echo "═══════════════════════════════════════════"
-echo "   ESP32 ANDROID TOOLKIT - DOCTOR"
-echo "═══════════════════════════════════════════"
+echo "==============================================="
+echo "   ESP32 ANDROID TOOLKIT V2 - DOCTOR"
+echo "==============================================="
 echo -e "${C_RESET}"
 
 # 1. Python version
@@ -29,7 +29,7 @@ if command -v python3 >/dev/null 2>&1; then
     PY_VER="$(python3 --version 2>&1 | awk '{print $2}')"
     check_pass "Python: $PY_VER"
 else
-    check_fail "Python chưa được cài đặt. Chạy: pkg install python"
+    check_fail "Python chua duoc cai dat. Chay: pkg install python"
 fi
 
 # 2. Android version
@@ -38,77 +38,99 @@ if command -v getprop >/dev/null 2>&1; then
     if [ -n "$ANDROID_VER" ]; then
         check_pass "Android version: $ANDROID_VER"
     else
-        check_warn "Không đọc được Android version (getprop không trả về giá trị)."
+        check_warn "Khong doc duoc Android version (getprop khong tra ve gia tri)."
     fi
 else
-    check_warn "Không tìm thấy 'getprop', bỏ qua kiểm tra Android version."
+    check_warn "Khong tim thay 'getprop', bo qua kiem tra Android version."
 fi
 
 # 3. USB Host / OTG support
 if [ -d /sys/bus/usb ] || command -v lsusb >/dev/null 2>&1; then
-    check_pass "Thiết bị có hỗ trợ USB Host (subsystem /sys/bus/usb tồn tại)."
+    check_pass "Thiet bi co ho tro USB Host (subsystem /sys/bus/usb ton tai)."
 else
-    check_warn "Không xác nhận được USB Host. Một số thiết bị không hỗ trợ OTG."
+    check_warn "Khong xac nhan duoc USB Host. Mot so thiet bi khong ho tro OTG."
 fi
 
 # 4. Termux:API
 if command -v termux-usb >/dev/null 2>&1; then
-    check_pass "termux-api (termux-usb): đã cài."
+    check_pass "termux-api (termux-usb): da cai."
     if timeout 5 termux-usb -l >/dev/null 2>&1; then
-        check_pass "termux-usb phản hồi bình thường."
+        check_pass "termux-usb phan hoi binh thuong."
     else
-        check_warn "termux-usb không phản hồi. Kiểm tra ứng dụng Termux:API đã cài và cấp quyền chưa."
+        check_warn "termux-usb khong phan hoi. Kiem tra ung dung Termux:API da cai va cap quyen chua."
     fi
 else
-    check_fail "termux-usb chưa cài. Chạy: pkg install termux-api và cài app Termux:API."
+    check_fail "termux-usb chua cai. Chay: pkg install termux-api va cai app Termux:API."
 fi
 
-# 5. Thư viện Python libusb1
+# 5. Thư viện Python libusb1 + thư viện native libusb-1.0.so
 if python3 -c "import usb1" >/dev/null 2>&1; then
-    check_pass "Thư viện Python 'libusb1': đã cài."
+    check_pass "Thu vien Python 'libusb1': da cai."
 else
-    check_fail "Thiếu thư viện Python 'libusb1'. Chạy: pip install libusb1"
+    check_fail "Thieu thu vien Python 'libusb1'. Chay: pip install libusb1 --break-system-packages"
+fi
+
+if python3 -c "
+import sys
+sys.path.insert(0, '$TOOLS_DIR')
+import android_usb  # noqa: F401  (chi de kich hoat preload)
+import usb1
+usb1.USBContext().close()
+" >/dev/null 2>&1; then
+    check_pass "Thu vien native libusb-1.0.so: nap thanh cong."
+else
+    check_fail "Khong nap duoc libusb-1.0.so (co the thieu file .so du da 'pip install libusb1'). Chay: pkg install libusb && ls \$PREFIX/lib/libusb-1.0.so*"
 fi
 
 # 6. Firmware
-missing_fw=0
 for f in bootloader.bin partitions.bin boot_app0.bin firmware.bin; do
     if [ -f "$FIRMWARE_DIR/$f" ]; then
-        check_pass "Firmware: $f có sẵn."
+        check_pass "Firmware: $f co san."
     else
-        check_warn "Firmware: thiếu $f trong thư mục firmware/."
-        missing_fw=1
+        check_warn "Firmware: thieu $f trong thu muc firmware/."
     fi
 done
 
 if [ -f "$FIRMWARE_DIR/littlefs.bin" ]; then
-    check_pass "Firmware: littlefs.bin có sẵn (sẽ được nạp kèm)."
+    check_pass "Firmware: littlefs.bin co san (se duoc nap kem)."
 else
-    log_info "Firmware: littlefs.bin không có — bỏ qua (tùy chọn, chỉ cần nếu project dùng LittleFS)."
+    log_info "Firmware: littlefs.bin khong co — bo qua (tuy chon, chi can neu project dung LittleFS)."
 fi
 
-# 7. Quyền truy cập USB hiện tại + phát hiện ESP32
-log_info "Đang dò tìm thiết bị USB đang cắm..."
+# 7. Cau hinh
+if [ -f "$CONFIG_DIR/config.json" ]; then
+    check_pass "Cau hinh: config/config.json co san."
+else
+    check_warn "Cau hinh: thieu config/config.json, se dung gia tri mac dinh."
+fi
+if [ -f "$CONFIG_DIR/partition.json" ]; then
+    check_pass "Cau hinh: config/partition.json co san."
+else
+    check_warn "Cau hinh: thieu config/partition.json, se dung gia tri mac dinh."
+fi
+
+# 8. Thiết bị USB đang cắm (chỉ liệt kê, không xin quyền)
+log_info "Dang do tim thiet bi USB dang cam (khong xin quyen)..."
 DEVICES_JSON="$(timeout 5 termux-usb -l 2>/dev/null)"
 if [ -n "$DEVICES_JSON" ] && [ "$DEVICES_JSON" != "[]" ]; then
-    check_pass "Phát hiện thiết bị USB đang cắm: $DEVICES_JSON"
-    log_info "Chạy './chipinfo.sh' để xác nhận đây có phải ESP32 hay không."
+    check_pass "Phat hien thiet bi USB dang cam: $DEVICES_JSON"
+    log_info "Chay './chipinfo.sh' de xac nhan day co phai ESP32 hay khong (se xin quyen USB)."
 else
-    check_warn "Không phát hiện thiết bị USB nào. Cắm cáp OTG + board ESP32 rồi chạy lại doctor.sh."
+    check_warn "Khong phat hien thiet bi USB nao. Cam cap OTG + board ESP32 roi chay lai doctor.sh."
 fi
 
 echo
-echo -e "${C_BOLD}═══════════════════════════════════════════${C_RESET}"
-echo -e "Kết quả: ${C_GREEN}${PASS} PASS${C_RESET}  ${C_YELLOW}${WARN} WARNING${C_RESET}  ${C_RED}${FAIL} FAIL${C_RESET}"
-echo -e "${C_BOLD}═══════════════════════════════════════════${C_RESET}"
+echo -e "${C_BOLD}===============================================${C_RESET}"
+echo -e "Ket qua: ${C_GREEN}${PASS} PASS${C_RESET}  ${C_YELLOW}${WARN} WARNING${C_RESET}  ${C_RED}${FAIL} FAIL${C_RESET}"
+echo -e "${C_BOLD}===============================================${C_RESET}"
 
 if [ "$FAIL" -gt 0 ]; then
-    log_error "Vui lòng khắc phục các mục FAIL ở trên trước khi flash."
+    log_error "Vui long khac phuc cac muc FAIL o tren truoc khi flash."
     exit 1
 elif [ "$WARN" -gt 0 ]; then
-    log_warn "Có một số cảnh báo, nhưng có thể vẫn flash được. Kiểm tra lại nếu gặp lỗi."
+    log_warn "Co mot so canh bao, nhung co the van flash duoc. Kiem tra lai neu gap loi."
     exit 0
 else
-    log_ok "Môi trường sẵn sàng! Chạy './flash.sh' để bắt đầu."
+    log_ok "Moi truong san sang! Chay './flash.sh' de bat dau."
     exit 0
 fi

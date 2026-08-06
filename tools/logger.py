@@ -3,9 +3,9 @@
 """
 logger.py
 =========
-Logging có màu ANSI cho toàn bộ bộ công cụ. Không dùng module `logging`
-chuẩn để giữ output đơn giản, đẹp mắt và dễ đọc trên terminal Termux
-(kể cả các terminal Android không hỗ trợ đầy đủ mã màu 256).
+Logging có màu ANSI cho toàn bộ ESP32 Android Toolkit V2. Không dùng
+module `logging` chuẩn để giữ output đơn giản, đẹp và dễ đọc trên
+terminal Termux (kể cả terminal không hỗ trợ đầy đủ mã màu).
 """
 
 from __future__ import annotations
@@ -32,7 +32,6 @@ class Colors:
 
 
 def _supports_color() -> bool:
-    """Kiểm tra terminal hiện tại có hỗ trợ màu ANSI hay không."""
     if not hasattr(sys.stdout, "isatty"):
         return False
     if not sys.stdout.isatty():
