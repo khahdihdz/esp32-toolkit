@@ -125,7 +125,12 @@ def main() -> int:
             usb_dev.open()
             vendor_id, product_id = usb_dev.get_device_descriptor()
             bridge = create_bridge(usb_dev, vendor_id, product_id)
+            logger.info(f"USB: VID={vendor_id:#06x} PID={product_id:#06x} -> driver phat hien: {bridge.NAME}")
             bridge.open()
+            logger.info(
+                f"Da mo UART qua {bridge.NAME}: endpoint IN=0x{bridge.ep_in:02x} "
+                f"OUT=0x{bridge.ep_out:02x} tren interface {bridge.interface}"
+            )
             bridge.set_baud(args.baud)
             reconnect_delay = float(cfg.get("reconnect_initial_delay_sec", 1))
 

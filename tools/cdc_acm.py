@@ -124,3 +124,18 @@ class CdcAcmBridge(UartBridge):
         chuẩn — không gây hại nếu board không đấu nối hai chân này.
         """
         super().enter_bootloader()
+
+    def hard_reset(self) -> None:
+        """
+        LOI DA TUNG XAY RA O DAY: hard_reset() cua lop cha (dung chung
+        cho CP2102/CH340/FTDI) ket thuc voi dtr=False vinh vien. Voi cac
+        chip roi do, DTR chi la tin hieu dieu khien GPIO0 nen khong sao.
+        Nhung voi CDC-ACM native (xem ghi chu o open() ben tren), mot so
+        firmware ESP32-S3/C3 CHI xuat du lieu qua cong USB khi DTR=True
+        - neu DTR bi bo lai False sau reset, thiet bi im lang TUYET DOI
+        vinh vien du firmware van chay binh thuong ben trong, va bam nut
+        RESET vat ly KHONG sua duoc vi DTR la trang thai phia host.
+        Do do o day PHAI bat lai DTR=True ngay sau khi reset xong.
+        """
+        super().hard_reset()
+        self._set_modem_lines(dtr=True, rts=False)
