@@ -144,38 +144,64 @@ class AndroidUsbDevice:
                     "Quyen USB co the chua duoc cap, hoac thiet bi da bi rut ra."
                 ) from exc
 
-        self._context = self._make_context()
-
-        try:
-            self._handle = self._context.wrapSysDevice(self._fd)
-        except usb1.USBError as exc:
-            raise AndroidUsbError(f"libusb wrapSysDevice that bai: {exc}") from exc
+        self._handle = self._wrap_with_retry()
 
         try:
             self._handle.setAutoDetachKernelDriver(True)
         except usb1.USBError:
             pass  # không nghiêm trọng trên Android (thường không có kernel driver)
 
-    @staticmethod
-    def _make_context() -> "usb1.USBContext":
-        """Tao USBContext, tat device discovery neu thu vien ho tro.
+    def _wrap_with_retry(self) -> "usb1.USBDeviceHandle":
+        """Goi wrapSysDevice, tu dong fallback khi gap LIBUSB_ERROR_IO.
 
-        Tren Android khong root, libusb_wrap_sys_device() that bai voi
-        LIBUSB_ERROR_IO neu context con co gang quet /sys/bus/usb luc
-        khoi tao — vi tien trinh khong co quyen doc sysfs truc tiep, chi
-        co fd da duoc Android cap qua termux-usb. Cac ban libusb cu dung
-        LIBUSB_OPTION_WEAK_AUTHORITY de tat kiem tra nay; python-libusb1
-        hien dai (libusb >= 1.0.27) thay bang tham so with_device_discovery.
+        GHI CHU QUAN TRONG (2 lan sua doi, xem lich su):
+        1) Ban dau: _make_context() uu tien with_device_discovery=False
+           de ne LIBUSB_ERROR_IO. Nhung co nay chi giup wrapSysDevice,
+           lai lam bulkRead() im lang vi libusb khong nap dung active
+           config descriptor.
+        2) Sau do: doi lai thanh USBContext() tran (giong
+           android_usb_raw.py). Nhung thuc te hien truong cho thay
+           LIBUSB_ERROR_IO tu wrapSysDevice() la CHAP CHON — no cung
+           xay ra ca voi context tran (chipinfo.sh dung
+           android_usb_raw.py, context tran, van bi LIBUSB_ERROR_IO).
+           => Loi nay khong tat dinh theo co discovery, ma phu thuoc
+           thoi diem/trang thai phien quyen termux-usb da cap.
+        Giai phap cuoi: thu context tran truoc (uu tien vi bulk read on
+        dinh hon). Neu wrapSysDevice bao IO error, dong context cu va
+        thu lai DUY NHAT MOT LAN voi with_device_discovery=False truoc
+        khi bo cuoc. Neu ca hai deu fail, bao loi ro cho nguoi dung biet
+        day la loi tam thoi cua phien USB (thu rut cam lai thiet bi hoac
+        chay lai lenh).
         """
-        try:
-            return usb1.USBContext(with_device_discovery=False)
-        except TypeError:
-            # Ban usb1 cu hon khong ho tro tham so nay.
-            return usb1.USBContext()
-        except usb1.USBError:
-            # libusb < 1.0.27: tham so duoc chap nhan nhung context init
-            # that bai vi backend chua ho tro. Quay lai mac dinh.
-            return usb1.USBContext()
+        last_exc: Optional[usb1.USBError] = None
+        for use_weak_authority in (False, True):
+            try:
+                context = usb1.USBContext(with_device_discovery=False) if use_weak_authority else usb1.USBContext()
+            except TypeError:
+                context = usb1.USBContext()
+            except usb1.USBError:
+                continue
+            try:
+                handle = context.wrapSysDevice(self._fd)
+                self._context = context
+                return handle
+            except usb1.USBError as exc:
+                last_exc = exc
+                try:
+                    context.close()
+                except Exception:
+                    pass
+                logger.warning(
+                    f"wrapSysDevice that bai ({'weak-authority' if use_weak_authority else 'mac dinh'}): {exc}"
+                    + ("" if use_weak_authority else " — dang thu lai voi with_device_discovery=False...")
+                )
+        raise AndroidUsbError(
+            f"libusb wrapSysDevice that bai o ca 2 kieu context: {last_exc}. "
+            "Day thuong la loi tam thoi cua phien quyen termux-usb (Android "
+            "chua san sang hoac thiet bi dang bi tien trinh khac giu). Hay thu: "
+            "rut cam lai day USB, chay lai lenh, hoac neu van loi thi khoi dong "
+            "lai Termux."
+        ) from last_exc
 
     def claim_interface(self, interface: int) -> None:
         assert self._handle is not None
@@ -266,6 +292,22 @@ class AndroidUsbDevice:
         assert self._handle is not None
         return self._handle.controlRead(request_type, request, value, index, length, timeout=timeout)
 
+    def clear_endpoint_halt(self, endpoint: int) -> None:
+        """Chu dong CLEAR_FEATURE(ENDPOINT_HALT) cho mot endpoint.
+
+        Goi phong ngua ngay sau khi claim interface, TRUOC KHI bat dau
+        doc/ghi: trang thai STALL cua mot endpoint la trang thai CUA
+        THIET BI (khong phai cua tien trinh/libusb), nen no co the con
+        sot lai tu lan chay truoc bi crash/kill giua chung, hoac tu
+        tien trinh Android USB Host truoc do. Bo qua loi vi hau het
+        thiet bi se bao "khong co gi de clear" (khong nghiem trong).
+        """
+        assert self._handle is not None
+        try:
+            self._handle.clearHalt(endpoint)
+        except usb1.USBError:
+            pass
+
     def bulk_write(self, endpoint: int, data: bytes, timeout: int = 3000) -> int:
         assert self._handle is not None
         return self._handle.bulkWrite(endpoint, data, timeout=timeout)
@@ -274,11 +316,44 @@ class AndroidUsbDevice:
         assert self._handle is not None
         try:
             return self._handle.bulkRead(endpoint, length, timeout=timeout)
-        except usb1.USBErrorTimeout:
-            return b""
+        except usb1.USBErrorTimeout as exc:
+            # QUAN TRONG: timeout co the xay ra GIUA CHUNG mot bulk transfer,
+            # sau khi mot phan du lieu da thuc su den noi. libusb1 dinh kem
+            # phan da nhan duoc vao exc.received - neu chi return b"" o day,
+            # ta AM THAM VUT BO nhung byte hop le do, lam dut/lech dong du
+            # lieu UART va khien cac dong log sau bi doc sai ("nghi ngo sai
+            # baudrate") du firmware khong he loi.
+            return bytes(getattr(exc, "received", b"") or b"")
         except usb1.USBErrorPipe:
-            # Một số driver clone trả STALL khi buffer rỗng; bỏ qua như timeout.
-            return b""
+            # SUA LOI QUAN TRONG: USBErrorPipe nghia la endpoint dang o
+            # trang thai STALL (CLEAR_FEATURE/ENDPOINT_HALT chua duoc goi),
+            # KHONG PHAI "khong co du lieu". Ban cu o day return b"" giong
+            # het truong hop timeout ranh - ket qua la serial_monitor.py
+            # bao "0 byte" mai mai du endpoint dang bi ket, khien nguoi
+            # dung tuong nham la loi firmware/baud/mach reset trong khi
+            # thuc chat chi can clear halt. Theo chuan USB, mot bulk
+            # endpoint bi stall se tu dong tu choi MOI transfer tiep theo
+            # cho toi khi host gui CLEAR_FEATURE(ENDPOINT_HALT) - do do o
+            # day ta tu dong clearHalt() roi thu lai DUY NHAT MOT LAN. Neu
+            # van fail, bao loi ro rang thay vi tiep tuc gia vo "im lang".
+            try:
+                self._handle.clearHalt(endpoint)
+            except usb1.USBError as clear_exc:
+                raise AndroidUsbError(
+                    f"Endpoint 0x{endpoint:02x} bi STALL va khong clear duoc: {clear_exc}. "
+                    "Hay rut cam lai day USB (STALL o muc phan cung/kernel usbfs "
+                    "khong tu het duoc)."
+                ) from clear_exc
+            try:
+                return self._handle.bulkRead(endpoint, length, timeout=timeout)
+            except usb1.USBErrorTimeout as exc2:
+                return bytes(getattr(exc2, "received", b"") or b"")
+            except usb1.USBErrorPipe as exc2:
+                raise AndroidUsbError(
+                    f"Endpoint 0x{endpoint:02x} van bi STALL ngay sau khi clearHalt(): {exc2}. "
+                    "Day thuong la do thiet bi/driver clone khong tuong thich hoan toan, "
+                    "hoac phien USB dang bi giu boi tien trinh khac. Hay rut cam lai day USB."
+                ) from exc2
 
     def get_device_descriptor(self) -> Tuple[int, int]:
         """Trả về (vendor_id, product_id) của thiết bị."""

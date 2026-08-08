@@ -43,6 +43,12 @@ class FT232Bridge(UartBridge):
         self.usb_dev.claim_interface(self.interface)
         eps = self.usb_dev.find_bulk_endpoints(self.interface)
         self.ep_in, self.ep_out = eps.ep_in, eps.ep_out
+
+        # Xoa STALL con sot lai tu phien truoc (xem giai thich chi tiet
+        # trong cp210x.py) truoc khi bat dau doc/ghi.
+        self.usb_dev.clear_endpoint_halt(self.ep_in)
+        self.usb_dev.clear_endpoint_halt(self.ep_out)
+
         # SIO_RESET rồi cấu hình 8N1. Chỉ số "port" của FTDI thường là
         # interface + 1 theo quy ước firmware D2XX.
         self.usb_dev.control_write(self.REQ_TYPE_OUT, self.RESET_REQUEST, 0, self.interface + 1)

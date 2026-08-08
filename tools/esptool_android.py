@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 import time
 from typing import List, Tuple
@@ -104,13 +105,35 @@ def cmd_erase_flash(args: argparse.Namespace) -> int:
         usb_dev.close()
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _clean_token(raw: str) -> str:
+    """Loai bo ma mau ANSI va khoang trang thua co the bi lan vao tham
+    so do loi buffering/word-splitting khi CMD duoc build trong bash
+    (vd: bien offset bi capture nham ca dong log [OK] mau)."""
+    return _ANSI_RE.sub("", raw).strip()
+
+
 def _parse_offset_file_pairs(pairs: List[str]) -> List[Tuple[int, str]]:
     if len(pairs) % 2 != 0:
-        raise FirmwareError("Tham so write_flash phai theo cap: <offset> <file> ...")
+        raise FirmwareError(
+            "Tham so write_flash phai theo cap: <offset> <file> ... "
+            f"(nhan duoc {len(pairs)} tham so: {pairs!r})"
+        )
     entries: List[Tuple[int, str]] = []
     for i in range(0, len(pairs), 2):
-        offset = int(pairs[i], 0)
-        path = pairs[i + 1]
+        offset_raw = _clean_token(pairs[i])
+        path = _clean_token(pairs[i + 1])
+        try:
+            offset = int(offset_raw, 0)
+        except ValueError as exc:
+            raise FirmwareError(
+                f"Offset khong hop le o vi tri {i}: {pairs[i]!r} "
+                "(co the do loi bien moi truong bi lan ky tu mau ANSI trong "
+                "script bash — kiem tra lai resolve_littlefs_offset/CMD trong "
+                "flash.sh hoac verify.sh)"
+            ) from exc
         if not check_file_exists(path):
             raise FirmwareError(f"Khong tim thay file: {path}")
         entries.append((offset, path))

@@ -39,6 +39,13 @@ CMD="$CMD 0x10000 $FIRMWARE_DIR/firmware.bin"
 
 if has_littlefs_image; then
     LITTLEFS_OFFSET="$(resolve_littlefs_offset)"
+    # Kiem tra dinh dang lan cuoi truoc khi dua vao CMD: neu vi ly do gi
+    # do bien nay khong phai la mot offset hex sach, dung ngay va bao
+    # loi ro rang thay vi de esptool_android.py bao ValueError kho hieu.
+    if ! [[ "$LITTLEFS_OFFSET" =~ ^0x[0-9a-fA-F]+$ ]]; then
+        log_error "LITTLEFS_OFFSET khong hop le sau khi tu dong do: '$LITTLEFS_OFFSET'"
+        exit 1
+    fi
     log_info "Phat hien firmware/littlefs.bin — se nap kem o offset $LITTLEFS_OFFSET."
     CMD="$CMD $LITTLEFS_OFFSET $FIRMWARE_DIR/littlefs.bin"
 else

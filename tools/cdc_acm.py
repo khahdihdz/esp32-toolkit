@@ -80,6 +80,11 @@ class CdcAcmBridge(UartBridge):
         if self._control_interface != self.interface:
             self.usb_dev.try_claim_interface(self._control_interface)
 
+        # Xoa STALL con sot lai tu phien truoc (xem giai thich chi tiet
+        # trong cp210x.py) truoc khi bat dau doc/ghi.
+        self.usb_dev.clear_endpoint_halt(self.ep_in)
+        self.usb_dev.clear_endpoint_halt(self.ep_out)
+
         # Bật DTR+RTS mặc định (một số firmware ESP32-S3 USB-CDC chỉ
         # xuất dữ liệu ra cổng khi DTR được set).
         self._set_modem_lines(dtr=True, rts=True)

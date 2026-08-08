@@ -50,6 +50,11 @@ class CH340Bridge(UartBridge):
         eps = self.usb_dev.find_bulk_endpoints(self.interface)
         self.ep_in, self.ep_out = eps.ep_in, eps.ep_out
 
+        # Xoa STALL con sot lai tu phien truoc (xem giai thich chi tiet
+        # trong cp210x.py) truoc khi bat dau doc/ghi.
+        self.usb_dev.clear_endpoint_halt(self.ep_in)
+        self.usb_dev.clear_endpoint_halt(self.ep_out)
+
         # Đọc 2 thanh ghi trạng thái ban đầu — hành vi giống driver
         # Linux, một số clone CH340 cần bước đọc này trước khi init.
         try:

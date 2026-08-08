@@ -301,7 +301,20 @@ class EspRomLoader:
 
         payload = struct.pack("<IIII", offset, size, 0, 0)
         data, _value = self.command(CMD_SPI_FLASH_MD5, payload, timeout_ms=10000)
-        return data[:32].decode("ascii", errors="ignore")
+        # QUAN TRONG: dang noi truc tiep voi ROM bootloader (khong nap
+        # flasher stub), nen ROM tra ve 16 byte MD5 THO (binary), KHAC
+        # voi stub loader (tra ve chuoi ASCII hex 32 ky tu). Neu ep giai
+        # ma 16 byte nhi phan do nhu ASCII se ra chuoi rac, khong bao
+        # gio khop voi MD5 cuc bo -> verify SAI ngay ca khi flash dung.
+        # Phai tu nhan biet do dai va hex-hoa neu la du lieu tho.
+        raw = data[:32]
+        if len(raw) == 32:
+            return raw.decode("ascii", errors="ignore")
+        if len(raw) >= 16:
+            return raw[:16].hex()
+        raise EspLoaderError(
+            f"Phan hoi MD5 khong hop le tu ROM bootloader (do dai={len(raw)} byte)."
+        )
 
     def read_flash(self, offset: int, size: int, progress_cb=None, write_size: int = FLASH_WRITE_SIZE) -> bytes:
         payload = struct.pack("<IIII", offset, size, write_size, 64)

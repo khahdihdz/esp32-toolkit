@@ -48,6 +48,37 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+_PRINTABLE_MIN = 0x20  # space
+_PRINTABLE_MAX = 0x7E  # ~
+
+
+def sanitize_for_display(raw: bytes) -> tuple[str, float]:
+    """Chuyen bytes tho thanh chuoi AN TOAN de in ra terminal.
+
+    Moi byte dieu khien (ESC, backspace, control chars...) deu bi thay
+    the bang placeholder hien thi duoc, KHONG bao gio in thang byte
+    dieu khien ra terminal - vi cac byte nay (vd 0x1B ESC) co the chua
+    ANSI escape sequence lam xoa/di chuyen con tro, khien du lieu that
+    su da duoc print() nhung nguoi dung khong he thay gi tren man hinh.
+
+    Tra ve (chuoi_an_toan, ty_le_byte_khong_in_duoc).
+    """
+    if not raw:
+        return "", 0.0
+    out_chars = []
+    bad = 0
+    for b in raw:
+        if b in (0x09,):  # cho phep tab
+            out_chars.append(chr(b))
+        elif _PRINTABLE_MIN <= b <= _PRINTABLE_MAX or b >= 0xA0:
+            out_chars.append(chr(b))
+        else:
+            out_chars.append(f"\\x{b:02x}")
+            bad += 1
+    ratio = bad / len(raw)
+    return "".join(out_chars), ratio
+
+
 def colorize_line(line: str) -> str:
     """Tô màu đơn giản theo mức log phổ biến của ESP-IDF (E/W/I/D)."""
     if re.match(r"^\s*E \(", line) or " error" in line.lower():
@@ -60,6 +91,17 @@ def colorize_line(line: str) -> str:
 
 
 def main() -> int:
+    # QUAN TRONG: khi stdout bi pipe (khong phai tty that, vd qua
+    # termux-usb), Python tu chuyen sang block-buffering (~8KB) thay vi
+    # line-buffering. Ket qua: du lieu serial da print() nhung bi "giam"
+    # trong buffer, khong bao gio hien ra man hinh cho toi khi buffer day
+    # hoac chuong trinh thoat. Ep line-buffering (hoac unbuffered neu
+    # reconfigure khong ho tro) ngay tu dau de moi dong hien ra tuc thi.
+    try:
+        sys.stdout.reconfigure(line_buffering=True, write_through=True)
+    except (AttributeError, ValueError):
+        sys.stdout = os.fdopen(sys.stdout.fileno(), "w", buffering=1)
+
     args = build_parser().parse_args()
     cfg = toolkit_config.load_config()
 
@@ -111,28 +153,83 @@ def main() -> int:
 
             logger.ok("Da ket noi UART. Dang lang nghe du lieu...\n")
 
+            total_bytes = 0
+            last_data_ts = time.time()
+            last_idle_warn_ts = 0.0
+
             while True:
                 chunk = bridge.read_available(max_size=2048, timeout_ms=200)
                 if not chunk:
+                    # Khong nhan duoc byte nao trong 200ms nay. Neu da lau
+                    # khong co gi (ke ca sau khi bam RESET vat ly), canh bao
+                    # dinh ky de phan biet "khong co byte nao toi USB" voi
+                    # "co byte nhung khong phai text co \\n" (vd sai baud).
+                    now = time.time()
+                    if now - last_data_ts > 3 and now - last_idle_warn_ts > 3:
+                        logger.warning(
+                            f"[DEBUG] Chua nhan duoc byte nao qua USB trong "
+                            f"{now - last_data_ts:.0f}s (tong tu dau: {total_bytes} byte). "
+                            "Neu con so nay mai la 0 ke ca sau khi bam RESET vat ly, "
+                            "van de nam o kenh USB/endpoint, khong phai o firmware/baud."
+                        )
+                        last_idle_warn_ts = now
                     continue
+
+                total_bytes += len(chunk)
+                last_data_ts = time.time()
                 line_buf.extend(chunk)
+
+                # Neu buffer phinh to ma khong co byte xuong dong nao, rat
+                # co the dang nhan du lieu SAI BAUD (rac nhi phan). Dump hex
+                # de nguoi dung tu mat thay co du lieu that dang toi.
+                if len(line_buf) > 512 and b"\n" not in line_buf:
+                    preview = bytes(line_buf[:64])
+                    logger.warning(
+                        f"[DEBUG] Da nhan {len(line_buf)} byte lien tuc khong co ky tu "
+                        f"xuong dong nao -> nghi ngo SAI BAUDRATE. 64 byte dau (hex): "
+                        f"{preview.hex(' ')}"
+                    )
+                    logger.warning(
+                        "[DEBUG] Neu day la ky tu co nghia bi bam nham baud, hay thu: "
+                        "BAUD=74880 ./monitor.sh (log mo dau ROM) hoac doi lai baud "
+                        "khop voi Serial.begin()/ESP_LOGx trong firmware.\n"
+                    )
+                    line_buf = bytearray()
+
                 while b"\n" in line_buf:
                     raw_line, _, rest = line_buf.partition(b"\n")
                     line_buf = bytearray(rest)
-                    text = raw_line.decode("utf-8", errors="replace").rstrip("\r")
 
-                    if filter_re and not filter_re.search(text):
+                    # QUAN TRONG: khong bao gio print() thang byte tho ra
+                    # terminal. Neu day la rac do sai baud, no rat de chua
+                    # byte dieu khien (ESC, backspace...) co the AM THAM
+                    # xoa/di chuyen con tro sau khi in - lam nguoi dung
+                    # tuong nhu khong co gi duoc in ra, du print() da chay.
+                    safe_text, bad_ratio = sanitize_for_display(bytes(raw_line).rstrip(b"\r"))
+
+                    if filter_re and not filter_re.search(safe_text):
                         continue
 
                     ts = ""
                     if not args.no_timestamp:
                         ts = datetime.datetime.now().strftime("[%H:%M:%S.%f")[:-3] + "] "
 
-                    display_line = ts + (colorize_line(text) if not args.no_color else text)
-                    print(display_line)
+                    if bad_ratio > 0.15:
+                        # Dong nay co ve la rac nhi phan (sai baud), du co
+                        # byte 0x0A "tinh co". Bao ro rang thay vi im lang.
+                        logger.warning(
+                            f"{ts}[DEBUG] Dong co {bad_ratio*100:.0f}% byte khong in duoc "
+                            f"-> nghi ngo SAI BAUDRATE: {safe_text[:120]}"
+                        )
+                    else:
+                        display_line = ts + (colorize_line(safe_text) if not args.no_color else safe_text)
+                        # flush=True: lop bao hiem thu hai, phong truong hop
+                        # reconfigure() o tren khong co hieu luc tren mot so
+                        # ban Termux/Python build cu.
+                        print(display_line, flush=True)
 
                     if log_file:
-                        log_file.write(f"{ts}{text}\n")
+                        log_file.write(f"{ts}{safe_text}\n")
                         log_file.flush()
 
         except KeyboardInterrupt:

@@ -16,9 +16,9 @@ C_YELLOW='\033[33m'
 C_CYAN='\033[36m'
 C_DIM='\033[2m'
 
-log_info()  { echo -e "${C_CYAN}${C_BOLD}[INFO]${C_RESET} $*"; }
-log_ok()    { echo -e "${C_GREEN}${C_BOLD}[OK]${C_RESET} $*"; }
-log_warn()  { echo -e "${C_YELLOW}${C_BOLD}[WARNING]${C_RESET} $*"; }
+log_info()  { echo -e "${C_CYAN}${C_BOLD}[INFO]${C_RESET} $*" 1>&2; }
+log_ok()    { echo -e "${C_GREEN}${C_BOLD}[OK]${C_RESET} $*" 1>&2; }
+log_warn()  { echo -e "${C_YELLOW}${C_BOLD}[WARNING]${C_RESET} $*" 1>&2; }
 log_error() { echo -e "${C_RED}${C_BOLD}[ERROR]${C_RESET} $*" 1>&2; }
 
 # Xác định thư mục gốc của dự án (nơi chứa flash.sh, tools/, firmware/).
@@ -99,6 +99,11 @@ resolve_littlefs_offset() {
     if [ -f "$FIRMWARE_DIR/partitions.bin" ]; then
         local detected
         detected="$(python3 "$TOOLS_DIR/partition_table.py" "$FIRMWARE_DIR/partitions.bin" --littlefs-offset-only 2>/dev/null)"
+        # Chi lay dung 1 chuoi hex 0x... dau tien tim thay trong output,
+        # de bao ve truoc moi truong hop bi lan ky tu mau ANSI/text log
+        # vao bien (vd: do buffering giua tien trinh con va shell), thay
+        # vi tin tuong 100% output cua python la sach.
+        detected="$(printf '%s' "$detected" | grep -oE '0x[0-9a-fA-F]+' | head -n1)"
         if [ -n "$detected" ]; then
             log_ok "Tu dong phat hien offset LittleFS tu partitions.bin: $detected"
             echo "$detected"

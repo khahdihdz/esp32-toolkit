@@ -44,6 +44,13 @@ class CP210xBridge(UartBridge):
         eps = self.usb_dev.find_bulk_endpoints(self.interface)
         self.ep_in, self.ep_out = eps.ep_in, eps.ep_out
 
+        # Xoa moi trang thai STALL con sot lai tu phien truoc (vd tien
+        # trinh cu bi Ctrl+C/kill giua mot bulk transfer) TRUOC KHI bat
+        # dau doc - neu khong, moi bulk read se bao USBErrorPipe va bi
+        # nham thanh "khong co du lieu" mai mai.
+        self.usb_dev.clear_endpoint_halt(self.ep_in)
+        self.usb_dev.clear_endpoint_halt(self.ep_out)
+
         # Bật interface UART, cấu hình 8N1.
         self.usb_dev.control_write(self.REQ_TYPE_OUT, self.IFC_ENABLE, 1, self.interface)
         self.usb_dev.control_write(self.REQ_TYPE_OUT, self.SET_LINE_CTL, 0x0800, self.interface)

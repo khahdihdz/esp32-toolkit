@@ -25,6 +25,10 @@ CMD="$CMD 0x10000 $FIRMWARE_DIR/firmware.bin"
 
 if has_littlefs_image; then
     LITTLEFS_OFFSET="$(resolve_littlefs_offset)"
+    if ! [[ "$LITTLEFS_OFFSET" =~ ^0x[0-9a-fA-F]+$ ]]; then
+        log_error "LITTLEFS_OFFSET khong hop le sau khi tu dong do: '$LITTLEFS_OFFSET'"
+        exit 1
+    fi
     CMD="$CMD $LITTLEFS_OFFSET $FIRMWARE_DIR/littlefs.bin"
 fi
 

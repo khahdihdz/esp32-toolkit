@@ -119,9 +119,20 @@ class UartBridge(ABC):
 
     # --- Reset ESP32 dùng DTR/RTS (giống "classic reset" của esptool) ---
     def hard_reset(self) -> None:
-        self.set_dtr_rts(dtr=False, rts=True)
+        """Reset ve che do chay firmware binh thuong (KHONG vao bootloader).
+
+        Dung dung 3 buoc nhu esptool that su lam (khong phai 2 buoc), vi
+        board dung mach RC auto-reset (rat pho bien voi CP2102 clone) can
+        mot xung DTR o giua de "bu" do tre nap/xa tu cua mach RC. Neu bo
+        qua buoc nay, GPIO0 co the con dang o muc thap dung luc EN vua
+        nha ra -> chip vo tinh roi vao ROM bootloader (im lang tuyet doi
+        cho toi khi nhan duoc lenh SLIP) thay vi chay firmware da flash.
+        """
+        self.set_dtr_rts(dtr=False, rts=True)   # EN=thap (giu reset)
         time.sleep(0.1)
-        self.set_dtr_rts(dtr=False, rts=False)
+        self.set_dtr_rts(dtr=True, rts=False)   # EN=cao (thoat reset), GPIO0=thap tam thoi
+        time.sleep(0.05)
+        self.set_dtr_rts(dtr=False, rts=False)  # tha GPIO0=cao -> boot firmware binh thuong
 
     def enter_bootloader(self) -> None:
         """
