@@ -231,7 +231,17 @@ def main() -> int:
                         # flush=True: lop bao hiem thu hai, phong truong hop
                         # reconfigure() o tren khong co hieu luc tren mot so
                         # ban Termux/Python build cu.
-                        print(display_line, flush=True)
+                        # QUAN TRONG: in ra stderr, KHONG PHAI stdout. Da xac
+                        # dinh duoc bang debug thuc te: khi chay qua
+                        # `termux-usb -r -e`, stdout cua tien trinh con bi
+                        # "nuot mat" (khong hien ra man hinh Termux) trong
+                        # khi stderr van hien binh thuong - moi dong
+                        # logger.info/ok/warning (deu dung stderr) hien du,
+                        # nhung print() thuong (stdout) thi khong bao gio
+                        # thay, du bo dem total_bytes van tang dung. In ra
+                        # stderr o day de dam bao du lieu serial thuc su
+                        # hien tren man hinh thay vi bien mat am tham.
+                        print(display_line, file=sys.stderr, flush=True)
 
                     if log_file:
                         log_file.write(f"{ts}{safe_text}\n")
