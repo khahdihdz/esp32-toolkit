@@ -121,18 +121,18 @@ class UartBridge(ABC):
     def hard_reset(self) -> None:
         """Reset ve che do chay firmware binh thuong (KHONG vao bootloader).
 
-        Dung dung 3 buoc nhu esptool that su lam (khong phai 2 buoc), vi
-        board dung mach RC auto-reset (rat pho bien voi CP2102 clone) can
-        mot xung DTR o giua de "bu" do tre nap/xa tu cua mach RC. Neu bo
-        qua buoc nay, GPIO0 co the con dang o muc thap dung luc EN vua
-        nha ra -> chip vo tinh roi vao ROM bootloader (im lang tuyet doi
-        cho toi khi nhan duoc lenh SLIP) thay vi chay firmware da flash.
+        QUAN TRONG: khac voi enter_bootloader(), o day GPIO0 (dieu khien
+        boi DTR) phai luon giu muc CAO (dtr=False) trong SUOT qua trinh,
+        ke ca dung luc EN (dieu khien boi RTS) chuyen tu thap len cao.
+        Neu vo tinh set dtr=True (GPIO0 thap) dung luc RTS chuyen ve
+        False (EN thoat reset), chip se hieu la tin hieu vao ROM
+        bootloader (im lang tuyet doi cho toi khi nhan lenh SLIP) thay
+        vi chay firmware da flash - day la loi thuc te tung xay ra o day
+        (dtr bi set True nham o buoc giua, trung voi luc thoat reset).
         """
-        self.set_dtr_rts(dtr=False, rts=True)   # EN=thap (giu reset)
+        self.set_dtr_rts(dtr=False, rts=True)   # EN=thap (giu reset), GPIO0=cao
         time.sleep(0.1)
-        self.set_dtr_rts(dtr=True, rts=False)   # EN=cao (thoat reset), GPIO0=thap tam thoi
-        time.sleep(0.05)
-        self.set_dtr_rts(dtr=False, rts=False)  # tha GPIO0=cao -> boot firmware binh thuong
+        self.set_dtr_rts(dtr=False, rts=False)  # EN=cao (thoat reset), GPIO0 VAN cao -> chay firmware
 
     def enter_bootloader(self) -> None:
         """
