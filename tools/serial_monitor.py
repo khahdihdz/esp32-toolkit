@@ -161,24 +161,45 @@ def main() -> int:
             total_bytes = 0
             last_data_ts = time.time()
             last_idle_warn_ts = 0.0
+            idle_notice_shown = False
 
             while True:
                 chunk = bridge.read_available(max_size=2048, timeout_ms=200)
                 if not chunk:
-                    # Khong nhan duoc byte nao trong 200ms nay. Neu da lau
-                    # khong co gi (ke ca sau khi bam RESET vat ly), canh bao
-                    # dinh ky de phan biet "khong co byte nao toi USB" voi
-                    # "co byte nhung khong phai text co \\n" (vd sai baud).
+                    # Khong nhan duoc byte nao trong 200ms nay.
                     now = time.time()
-                    if now - last_data_ts > 3 and now - last_idle_warn_ts > 3:
-                        logger.warning(
-                            f"[DEBUG] Chua nhan duoc byte nao qua USB trong "
-                            f"{now - last_data_ts:.0f}s (tong tu dau: {total_bytes} byte). "
-                            "Neu con so nay mai la 0 ke ca sau khi bam RESET vat ly, "
-                            "van de nam o kenh USB/endpoint, khong phai o firmware/baud."
-                        )
-                        last_idle_warn_ts = now
+                    if total_bytes == 0:
+                        # Tu luc ket noi/reset toi gio CHUA TUNG nhan duoc
+                        # byte nao. Day moi thuc su la dau hieu nghi ngo loi
+                        # kenh USB/endpoint - canh bao dinh ky nhu cu.
+                        if now - last_data_ts > 3 and now - last_idle_warn_ts > 3:
+                            logger.warning(
+                                f"[DEBUG] Chua nhan duoc byte nao qua USB trong "
+                                f"{now - last_data_ts:.0f}s (tong tu dau: {total_bytes} byte). "
+                                "Neu con so nay mai la 0 ke ca sau khi bam RESET vat ly, "
+                                "van de nam o kenh USB/endpoint, khong phai o firmware/baud."
+                            )
+                            last_idle_warn_ts = now
+                    else:
+                        # Da tung nhan duoc du lieu (vd in het log boot) roi
+                        # moi im lang - day la hanh vi BINH THUONG cua nhieu
+                        # firmware (chi log luc khoi dong, loop() khong print
+                        # gi them), KHONG PHAI loi kenh USB. Chi nhac MOT LAN
+                        # duy nhat, voi thong diep dung ban chat, thay vi lap
+                        # lai canh bao "loi USB" gay hoang mang moi 3 giay.
+                        if not idle_notice_shown and now - last_data_ts > 5:
+                            logger.info(
+                                f"[DEBUG] Da nhan {total_bytes} byte roi im lang "
+                                f"{now - last_data_ts:.0f}s. Day la binh thuong neu "
+                                "firmware chi log luc khoi dong va loop() khong in "
+                                "them gi - khong phai loi ket noi USB."
+                            )
+                            idle_notice_shown = True
                     continue
+
+                # Co du lieu moi toi -> reset lai co bao idle mot lan de lan
+                # im lang tiep theo (neu co) van duoc nhac lai.
+                idle_notice_shown = False
 
                 total_bytes += len(chunk)
                 last_data_ts = time.time()
