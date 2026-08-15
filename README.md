@@ -1,276 +1,233 @@
-# ESP32 Android Toolkit V2
-
-Nạp firmware ESP32 hoàn toàn trong **Termux** qua cáp OTG, không cần:
-
-- root
-- PlatformIO
-- Arduino IDE
-- adb
-- `serial.tools.list_ports` / enumerate `/dev/ttyUSB*`
-
-Hoạt động dựa 100% trên **Android USB Host API** (thông qua `termux-usb`
-của gói Termux:API) + `libusb1`, tự triển khai lại giao thức ROM
-bootloader của ESP32 và driver cho các chip USB-UART phổ biến bằng
-Python thuần.
-
-Hỗ trợ Android 10 → 16. Đã thử trên HONOR MagicOS, và tương thích thiết
-kế với Xiaomi HyperOS, Samsung OneUI, OPPO ColorOS, OnePlus OxygenOS,
-Pixel Android (mọi ROM có hỗ trợ USB Host / OTG chuẩn AOSP).
-
-## Vì sao có bản V2
-
-Bản V1 dùng cùng nền tảng Android USB Host + termux-usb, nhưng có một
-lỗi kiến trúc: bước "chọn thiết bị" xin quyền USB một lần (để đọc
-VID/PID lọc chip), rồi bước "thao tác" (flash/monitor/...) xin quyền
-**lần thứ hai** cho cùng thiết bị đó. Hai vòng xin quyền tách biệt là
-nguyên nhân chính gây lỗi `Permission denied` ngắt quãng — người dùng
-thường chỉ để ý bấm "Allow" ở hộp thoại đầu rồi bỏ qua hộp thoại sau,
-hoặc phiên quyền hết hạn giữa hai bước.
-
-**V2 sửa tận gốc:** bước chọn thiết bị chỉ dùng `termux-usb -l` (liệt
-kê đường dẫn thô, không cần quyền). Toàn bộ phần còn lại — đọc VID/PID,
-chọn driver UART, chạy giao thức ROM loader, ghi/xóa/đọc flash — diễn
-ra **bên trong một phiên `termux-usb -r -e` DUY NHẤT**. Mỗi lần bạn
-chạy `flash.sh`/`erase.sh`/`chipinfo.sh`/`mac.sh`/`monitor.sh`, Android
-chỉ hỏi quyền đúng **một lần**.
+# ESP32 USB Flasher v3 — Termux Android
 
 ## Kiến trúc
 
-```
-esp32-toolkit/
-├── menu.sh              # Menu trung tâm
-├── install.sh            # Cài dependency (1 lệnh)
-├── doctor.sh              # Chẩn đoán môi trường
-├── flash.sh                # Flash firmware
-├── erase.sh                # Xóa toàn bộ flash
-├── monitor.sh               # Serial monitor
-├── chipinfo.sh                # Thông tin chip + MAC + magic register
-├── mac.sh                      # Chỉ in MAC
-├── update.sh                    # git pull + cập nhật dependency
-├── firmware/                     # Đặt file .bin vào đây
-│   ├── bootloader.bin
-│   ├── boot_app0.bin
-│   ├── partitions.bin
-│   ├── firmware.bin
-│   └── littlefs.bin (tùy chọn)
-├── config/
-│   ├── config.json          # baudrate, timeout, danh sách chip UART đã biết...
-│   └── partition.json       # offset flash mặc định, danh sách file bắt buộc/tùy chọn
-├── tools/
-│   ├── logger.py            # Log màu ANSI
-│   ├── config.py            # Nạp config.json / partition.json
-│   ├── progress.py          # Progress bar + spinner
-│   ├── utils.py              # format số liệu, retry, kiểm tra file...
-│   ├── android_usb.py         # Lớp USB mức thấp (termux-usb + libusb1)
-│   ├── usb_bridge.py           # Giao diện UartBridge trừu tượng + factory
-│   ├── cp210x.py                 # Driver CP2102/CP2102N/CP2105
-│   ├── ch340.py                   # Driver CH340/CH340C/CH9102
-│   ├── ftdi.py                     # Driver FT232R/FT231X
-│   ├── cdc_acm.py                   # Driver CDC-ACM chuẩn (USB native ESP32-S2/S3/C3/C6/H2)
-│   ├── usb_detect.py                 # Liệt kê + chọn thiết bị (KHÔNG xin quyền)
-│   ├── esp_loader.py                  # Giao thức SLIP + ROM loader ESP32
-│   ├── bootloader.py                   # Ghép USB → UartBridge → EspRomLoader, connect()
-│   ├── firmware.py                      # write_flash/erase/verify/read/image_info cấp cao
-│   ├── esptool_android.py                # CLI thống nhất (subcommands)
-│   ├── serial_monitor.py                  # Serial monitor real-time, auto reconnect
-│   └── common.sh                           # Thư viện bash dùng chung
-└── README.md
+```text
+Menu Python chạy trực tiếp trong Termux
+        ↓
+termux-usb -E
+        ↓
+run_worker.sh
+        ↓
+usb_worker.py
+        ↓
+TERMUX_USB_FD
+        ↓
+USBDEVFS
+        ↓
+CP2102 / CP2102N
+        ↓
+Bulk OUT 0x01 / Bulk IN 0x81
+        ↓
+ESP32 ROM Bootloader
+        ↓
+SLIP
 ```
 
-### Luồng dữ liệu
+Menu **không** chạy dưới `termux-usb`, vì vậy `input()` hoạt động bình thường trên Termux. Worker USB mới chạy trong callback và lấy `TERMUX_USB_FD`.
 
-```
-menu.sh / flash.sh / erase.sh / chipinfo.sh / mac.sh / monitor.sh
-        │
-        ├─ tools/usb_detect.py  (termux-usb -l, KHÔNG cần quyền)
-        │
-        └─ termux-usb -r -e "<lệnh python>" <device_path>   ← 1 LẦN DUY NHẤT
-                │
-                ├─ tools/android_usb.py     (mở fd đã cấp quyền, wrapSysDevice)
-                ├─ tools/usb_bridge.py      (chọn driver theo VID/PID)
-                │     ├─ cp210x.py / ch340.py / ftdi.py / cdc_acm.py
-                ├─ tools/esp_loader.py      (SLIP + giao thức ROM loader)
-                ├─ tools/bootloader.py      (connect/sync/detect chip)
-                ├─ tools/firmware.py        (flash/erase/verify/read)
-                └─ tools/esptool_android.py (CLI gọi tất cả các lớp trên)
-```
+## Không dùng
 
-## Chip ESP32 được hỗ trợ
-
-Tự động nhận diện qua magic register sau khi `sync`:
-
-`ESP32`, `ESP32-S2`, `ESP32-S3`, `ESP32-C2`, `ESP32-C3`, `ESP32-C6`, `ESP32-H2`
-
-## Driver UART-USB được hỗ trợ
-
-| Chip | VID:PID | Driver |
-|---|---|---|
-| CP2102 / CP2102N | 10C4:EA60 | `cp210x.py` |
-| CP2105 | 10C4:EA70 | `cp210x.py` |
-| CH340 / CH340C | 1A86:7523 | `ch340.py` |
-| CH9102 | 1A86:55D4 | `ch340.py` |
-| FT232R | 0403:6001 | `ftdi.py` |
-| FT231X | 0403:6015 | `ftdi.py` |
-| USB native (ESP32-S2/S3/C3/C6/H2) | 303A:xxxx | `cdc_acm.py` |
-
-Board dùng PL2303 hoặc chip UART khác chưa được liệt kê có thể thêm dễ
-dàng bằng cách tạo file driver mới kế thừa `UartBridge` trong
-`tools/usb_bridge.py` rồi đăng ký vào `_driver_classes()`.
+- pyserial
+- pyusb
+- libusb
+- ADB
+- MTP
+- `/dev/ttyUSB*`
+- `/dev/ttyACM*`
+- root
 
 ## Cài đặt
 
 ```bash
-pkg install git -y
-git clone <repo-url> esp32-toolkit && cd esp32-toolkit
-bash install.sh
+pkg update
+pkg install python
 ```
 
-`install.sh` tự cài: `python`, `clang`, `make`, `cmake`, `termux-api`,
-`jq`, `libusb`, và thư viện Python `libusb1`.
+Cài Termux:API tương thích với Termux và bảo đảm lệnh `termux-usb` hoạt động.
 
-Sau khi cài, bạn cần cài thêm ứng dụng **Termux:API** (F-Droid hoặc
-Google Play) — đây là phần bắt buộc để `termux-usb` hoạt động.
+Giải nén thư mục vào:
 
-## Sử dụng
+```text
+/data/data/com.termux/files/home/esp32-toolkit
+```
 
-Cách đơn giản nhất — dùng menu:
+Sau đó:
 
 ```bash
-./menu.sh
+cd ~/esp32-toolkit
+chmod +x *.sh
+./install.sh
 ```
 
-Hoặc gọi trực tiếp từng script:
+## Tự nhận diện firmware & offset (mục 13)
+
+Menu `13` quét một thư mục (mặc định thư mục hiện tại) và tự khớp tên file với offset chuẩn:
+
+| Tên file khớp (không phân biệt hoa/thường) | Offset  | Ý nghĩa |
+|---|---|---|
+| `bootloader*.bin` | `0x1000` | Bootloader |
+| `partitions.bin`, `partition-table.bin`, `partition_table.bin` | `0x8000` | Bảng phân vùng |
+| `boot_app0*.bin`, `ota_data_initial*.bin` | `0xE000` | OTA data init |
+| `firmware.bin`, `app.bin`, `*.ino.bin` | `0x10000` | Firmware (app) |
+| `merged*.bin`, `*.factory.bin` | `0x0` | Firmware gộp — nếu có, **chỉ nạp file này**, bỏ qua các file trên |
+
+Có quét cả thư mục con tối đa 3 cấp để bắt được cấu trúc `build/`, `build/bootloader/`, `build/partition_table/` của ESP-IDF. Nếu 2 file cùng khớp 1 offset, file ở cấp thư mục nông hơn (gần thư mục gốc hơn) được giữ, file còn lại bị bỏ qua kèm cảnh báo. Sau khi quét, menu in danh sách để xác nhận trước khi nạp — không tự nạp khi chưa xác nhận.
+
+Nếu tên file không theo chuẩn trên, dùng mục `6` (nhập tay từng cặp offset + file) như trước.
+
+## Kiểm tra callback USB
 
 ```bash
-./doctor.sh      # kiểm tra môi trường trước
-./flash.sh        # nạp firmware/*.bin vào ESP32 qua OTG
-./erase.sh          # xóa toàn bộ flash
-./chipinfo.sh          # xem chip, MAC, magic register
-./mac.sh                 # chỉ in MAC
-./monitor.sh                # serial monitor, Ctrl+C để thoát
-./update.sh                    # cập nhật toolkit
+termux-usb -l
 ```
 
-### Flash
+Ví dụ thiết bị:
 
-Đặt file `.bin` vào thư mục `firmware/` (đã có sẵn ví dụ), sau đó:
+```text
+/dev/bus/usb/001/002
+```
+
+Kiểm tra worker:
 
 ```bash
-./flash.sh
+termux-usb -E -e ~/esp32-toolkit/run_worker.sh \
+/dev/bus/usb/001/002 --op hardware-test
 ```
 
-Biến môi trường tùy chỉnh:
+## Chạy menu
 
 ```bash
-FLASH_BAUD=115200 ./flash.sh          # baud thấp hơn nếu cáp/board không ổn định
-LITTLEFS_OFFSET=0x290000 ./flash.sh   # đổi offset LittleFS (partition scheme khác)
-MAX_RETRIES=5 ./flash.sh              # tăng số lần thử lại
+cd ~/esp32-toolkit
+python esp32_usb_flasher.py --menu
 ```
 
-Offset mặc định (theo `min_spiffs.csv`, flash 4MB, arduino-esp32):
+Chọn `11` trước khi flash.
 
-| Phần | Offset |
-|---|---|
-| bootloader.bin | `0x1000` |
-| partitions.bin | `0x8000` |
-| boot_app0.bin | `0xe000` |
-| firmware.bin | `0x10000` |
-| littlefs.bin (tùy chọn) | `0x3D0000` (hoặc `0x290000` nếu dùng scheme 8MB) |
+## ESP32 ROM protocol
 
-Có thể sửa trực tiếp trong `config/partition.json` nếu muốn thay đổi
-lâu dài thay vì truyền biến môi trường mỗi lần.
+v3 dùng packet ROM dạng:
 
-### Monitor
+```text
+direction(1) command(1) length(2) checksum(4) payload
+```
+
+và SLIP `C0 ... C0`.
+
+Các command chính:
+
+- `SYNC = 0x08`
+- `READ_REG = 0x0A`
+- `SPI_ATTACH = 0x0D`
+- `READ_FLASH_SLOW = 0x0E`
+- `CHANGE_BAUD = 0x0F`
+- `FLASH_BEGIN = 0x02`
+- `FLASH_DATA = 0x03`
+- `FLASH_END = 0x04`
+
+ESP32 classic ROM dùng checksum XOR bắt đầu từ `0xEF` và block flash 0x400 byte.
+
+## Lưu ý về flash size
+
+v3 **không giả định ESP32 có 4 MB**. ROM-only flash readback được triển khai bằng `READ_FLASH_SLOW`, giới hạn 64 byte mỗi command. Đây là phương thức chậm nhưng phù hợp mục tiêu không dùng flasher stub.
+
+Bản v3 hiện không tự nhận dung lượng vật lý từ JEDEC trong menu info; do đó không tự báo `4 MB` khi chưa có dữ liệu xác thực. Khi flash, có thể truyền `--flash-size` cho worker nếu cần giới hạn vùng ghi.
+
+## Xóa Flash (mục 9) — mặc định xóa toàn bộ chip
+
+Mục `9` mặc định **xóa toàn bộ chip** (giống `erase_flash` chuẩn của esptool), không bắt chọn vùng trước:
+
+```text
+Xóa Flash — mặc định xóa TOÀN BỘ chip (mọi dữ liệu → 0xFF).
+Dung lượng Flash thật của chip (ví dụ 0x400000 cho 4 MB), hoặc gõ 'v' để xóa một vùng riêng thay vì toàn bộ:
+```
+
+- Nhập dung lượng chip (ví dụ `0x400000` cho 4 MB) → xóa toàn bộ từ `0x0`.
+- Gõ `v` → chuyển sang menu phụ để xóa một vùng cụ thể (dùng khi chỉ cần xóa lại bootloader hoặc partition table mà không muốn mất OTA data/app):
+
+| Lựa chọn | Vùng | Offset | Kích thước mặc định |
+|---|---|---|---|
+| `1` | Bootloader | `0x1000` | `0x7000` |
+| `2` | Bảng phân vùng (partition table) | `0x8000` | `0x1000` |
+| `3` | boot_app0 / OTA data init | `0xE000` | `0x1000` |
+| `4` | Vùng ứng dụng (app) | `0x10000` | `0x100000` (1 MB, có thể chỉnh) |
+| `6` | Tùy chỉnh | tự nhập | tự nhập |
+
+Offset của các vùng dùng chung bảng với mục `13` (tự nhận diện firmware) nên luôn nhất quán. Kích thước nhập vào đều được **tự động làm tròn lên bội số `0x1000`**. v3 không tự giả định dung lượng Flash (xem phần "Lưu ý về flash size" bên dưới), nên xóa toàn bộ luôn bắt gõ tay dung lượng thật để tránh xóa nhầm.
+
+## Sửa lỗi ROM báo `command 0x04: 01060000` khi Xóa Flash
+
+`erase_by_flash_begin()` trước đây gọi `FLASH_BEGIN` rồi gọi thẳng `FLASH_END`, bỏ qua các gói `FLASH_DATA`. ROM ESP32 thật ghi nhận số block đã khai báo trong `FLASH_BEGIN` (`num_blocks`) và chờ nhận đủ từng đó gói `FLASH_DATA` trước khi chấp nhận `FLASH_END` — nhận `FLASH_END` sớm khiến ROM báo lỗi trạng thái `0x06` ("không thực hiện được lệnh nhận"), hiển thị dạng `ESP32 ROM báo lỗi command 0x04: 01060000`.
+
+Đã sửa: sau `FLASH_BEGIN`, gửi đủ số block `FLASH_DATA` toàn byte `0xFF` (khớp trạng thái đã xóa mà `FLASH_BEGIN` vừa tạo ra) rồi mới gọi `FLASH_END`. Có test `tests/test_erase.py` khoá lại đúng thứ tự `begin → data × N → end`.
+
+## BOOT
+
+Nếu DTR/RTS không đưa được chip vào Download Mode:
+
+1. Giữ BOOT.
+2. Nhấn EN/RESET.
+3. Giữ BOOT 1–2 giây.
+4. Thả BOOT.
+5. Chạy lại mục `1` hoặc `11`.
+
+## Verify
+
+Verify phải đọc lại Flash thật rồi tính:
+
+- MD5
+- SHA-256
+
+Chỉ khi dữ liệu đọc lại khớp mới báo thành công.
+
+## Unit tests
 
 ```bash
-./monitor.sh
-BAUD=921600 ./monitor.sh
-LOG_FILE=session.log ./monitor.sh
-FILTER='ERROR' ./monitor.sh
+python -m unittest discover -s tests -v
 ```
 
-### Dùng trực tiếp CLI Python (nâng cao)
+## Nguồn protocol
 
-```bash
-python3 tools/esptool_android.py image_info firmware/firmware.bin
-# Các subcommand khác (sync/chip_id/read_mac/flash_id/erase_flash/
-# write_flash/flash_auto/read_flash/verify_flash/reset) đều cần chạy
-# bên trong một phiên termux-usb -r -e, xem cách flash.sh gọi.
-```
+Cấu trúc command, checksum, block 0x400, `FLASH_BEGIN/DATA/END`, `SPI_ATTACH` và ROM `READ_FLASH_SLOW` được đối chiếu với mã nguồn esptool của Espressif. v3 không import esptool và không dùng pyserial.
 
-## Cấu hình (`config/`)
 
-- **`config.json`**: baudrate mặc định (reset/flash/monitor), số lần
-  retry, timeout xin quyền USB, danh sách chip UART đã biết (VID:PID
-  → tên hiển thị), danh sách chip ESP32 được hỗ trợ.
-- **`partition.json`**: offset flash mặc định cho từng phần
-  (bootloader/partitions/boot_app0/firmware/littlefs), đường dẫn file
-  tương ứng trong `firmware/`, và danh sách file bắt buộc/tùy chọn.
+## Trạng thái v3
 
-Sửa 2 file này để tùy biến toolkit mà không cần đụng vào code Python.
+- Đã tách hoàn toàn menu và USB worker.
+- Menu chạy trực tiếp bằng Python trong Termux.
+- Worker chỉ chạy thông qua `termux-usb -E`.
+- Worker lấy `TERMUX_USB_FD` từ môi trường.
+- Không mở `/dev/bus/usb/...` từ Python.
+- CP2102 control transfer + Bulk OUT/IN dùng USBDEVFS.
+- ROM implementation hiện tập trung vào **ESP32 classic / ESP32-WROOM-32**. Các ESP32-S2/S3/C3/C6 có ROM protocol khác ở một số phần và không được giả định là ESP32 classic.
+- `READ_FLASH_SLOW (0x0E)` giới hạn 64 byte/lệnh theo ROM ESP32 classic nên readback lớn sẽ chậm.
+- v3 chưa tự đọc JEDEC flash size; vì vậy **không tự báo 4 MB**. Đây là chủ ý để tránh hard-code dung lượng.
 
-## Doctor — chẩn đoán
 
-```bash
-./doctor.sh
-```
+## Sửa lỗi `termux-usb: too many arguments`
 
-Kiểm tra: Python, phiên bản Android, USB Host/OTG, `termux-api`, thư
-viện `libusb1`, file firmware, file cấu hình, và thiết bị USB đang cắm
-(chỉ liệt kê, không xin quyền).
+v3 dùng `termux-usb -E -e run_worker.sh DEVICE` và truyền tham số Worker qua biến môi trường Base64. Không truyền `--op`, `--file`... trực tiếp sau DEVICE. Đây là cách tương thích với callback Termux:API đang dùng trên HONOR X7d.
 
-## Troubleshooting
+## Sửa lỗi trình tự BOOT/EN (không tự vào Download Mode)
 
-**"Permission denied" khi flash**
-Đây chính là lỗi kiến trúc mà V2 khắc phục. Nếu vẫn gặp: đảm bảo bạn
-đang dùng V2 (chỉ có DUY NHẤT một hộp thoại xin quyền USB xuất hiện
-mỗi lần chạy lệnh). Nếu hộp thoại không hiện ra, kiểm tra ứng dụng
-Termux:API đã cài và Termux có quyền hiển thị overlay/notification.
+`bootloader.py` trước đây gọi các bước `set_mhs()` **sai thứ tự**: EN được thả ra khỏi reset (`set_mhs(False, False)`) **trước khi** GPIO0 được kéo xuống thấp (`set_mhs(True, False)`). ESP32 chỉ lấy mẫu strap GPIO0 đúng vào thời điểm EN chuyển từ thấp lên cao (thoát reset) — vì thứ tự cũ sai, chip thường thoát reset với GPIO0 đang ở mức cao và boot thẳng vào firmware thường thay vì ROM Download Mode, nên phải bấm BOOT tay (mục `3`) mới nạp được.
 
-**Không tìm thấy thiết bị USB**
-- Cáp OTG phải hỗ trợ truyền dữ liệu (nhiều cáp OTG rẻ chỉ hỗ trợ sạc).
-- Điện thoại phải hỗ trợ USB Host (đa số flagship có, một số máy giá
-  rẻ không có).
-- Thử `./doctor.sh` để xem `termux-usb -l` có trả về gì không.
+Đã sửa lại đúng theo trình tự `UnixTightReset` của esptool: kéo GPIO0 xuống thấp *trước*, giữ nguyên trong lúc thả EN, rồi mới thả GPIO0. Sau bản vá này, mục `1`/`3`/`5` nên tự vào Download Mode mà không cần giữ nút BOOT, miễn mạch auto-reset trên board đúng chuẩn (2 transistor, active-low qua DTR/RTS).
 
-**Sync/connect thất bại (không dò được ROM bootloader)**
-- Một số board clone không tự động vào chế độ download qua DTR/RTS —
-  giữ nút `BOOT`/`IO0` khi cắm cáp, thả ra sau khi thấy log "Đang kết
-  nối...".
-- Thử `FLASH_BAUD=115200 ./flash.sh` nếu board/cáp không ổn định ở
-  baud cao.
+Nếu board vẫn không tự vào được sau bản vá, khả năng cao là mạch auto-reset trên board đảo cực khác chuẩn — dùng mục `3` (giữ BOOT thủ công) làm phương án dự phòng.
 
-**Không hỗ trợ chip USB-UART**
-Kiểm tra VID/PID board của bạn (thường in trên chip hoặc tra theo tên
-chip) và so với bảng driver ở trên. Nếu chip chưa được hỗ trợ, có thể
-thêm driver mới theo mẫu `tools/cp210x.py`.
 
-**CDC-ACM (ESP32-S2/S3/C3/C6/H2 dùng cổng USB native) không nhận dữ liệu**
-Một số firmware chỉ xuất log ra cổng USB-CDC khi DTR được bật —
-`cdc_acm.py` đã tự bật DTR+RTS khi mở, nhưng nếu firmware dùng
-USB-Serial-JTAG (không phải USB-CDC), hãy kiểm tra `idf.py menuconfig`
-→ Component config → ESP System Settings → Channel for console output
-được đặt đúng cổng.
+## v3.1 — chẩn đoán SYNC
 
-## FAQ
+Đã sửa trình tự DTR/RTS theo Espressif, dọn RX trước SYNC, tiêu thụ các response SYNC dư, hiển thị lỗi SYNC chi tiết và thêm `sync-raw`. Chế độ debug in tối đa 64 byte mỗi USB Bulk TX/RX.
 
-**Có cần root không?** Không. Toàn bộ dựa trên Android USB Host API
-chuẩn của Termux:API, không truy cập `/dev/bus/usb/*` trực tiếp bằng
-quyền hệ thống.
+\n## V3 Fixed 4 — Termux callback\n\n
+Trên HONOR X7d/Termux hiện tại, `termux-usb -e` truyền USB FD vào
+argument cuối của callback nhưng environment của tiến trình gọi không
+được bảo đảm truyền sang callback. V3 Fixed 4 không còn phụ thuộc vào
+`ESPFLASH_WORKER_ARGS_B64`: mỗi lần flash tạo wrapper tạm chứa các tham
+số nghiệp vụ, sau đó `termux-usb` truyền FD vào wrapper và wrapper chuyển
+FD cùng các tham số sang `usb_worker.py`. Không sử dụng `-E`.\n
 
-**Có cần cài PlatformIO/Arduino IDE trên máy tính không?** Không, chỉ
-cần biên dịch firmware `.bin` từ máy tính (hoặc CI) một lần rồi copy
-`.bin` vào điện thoại; toolkit chỉ lo phần nạp qua OTG.
-
-**Toolkit có tự build firmware từ source `.ino`/`.py` không?** Không.
-Toolkit chỉ nạp file `.bin` đã biên dịch sẵn (đặt vào `firmware/`).
-
-**Vì sao không dùng lại `esptool.py` gốc?** `esptool.py` gốc dùng
-pySerial, cần `/dev/ttyUSB*` — thứ mà sandbox Android không cấp cho
-ứng dụng thông thường. Toolkit triển khai lại đúng giao thức ROM
-loader công khai của Espressif bằng Python thuần trên nền Android USB
-Host API.
-
-## Đã kiểm thử
-
-ESP32 DevKit V1 (CP2102) qua cáp OTG trên **HONOR X7d chạy MagicOS 9**.
+## Fixed 6
+Request được ghi atomic vào `.worker_request.json`; request được giữ lại nếu callback/worker thất bại để chẩn đoán. Callback cố định trong `$PREFIX/bin` chuyển FD cuối cùng cho worker.

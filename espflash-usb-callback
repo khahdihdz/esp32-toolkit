@@ -1,0 +1,8 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -e
+
+ROOT="/data/data/com.termux/files/home/esp32-toolkit"
+PYTHON="/data/data/com.termux/files/usr/bin/python"
+WORKER="$ROOT/usb_worker.py"
+
+exec "$PYTHON" -u "$WORKER" "$@"
