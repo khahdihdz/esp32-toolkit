@@ -20,6 +20,7 @@ Mục tiêu:
 - Cấu hình CP210x.
 - SYNC ESP32 ROM.
 - READ_REG / kiểm tra chip.
+- Đọc Factory MAC từ eFuse ESP32 classic.
 - SPI_ATTACH.
 - Tự đọc JEDEC ID và dung lượng Flash bằng esp32_rom.py.
 - Không tự giả định Flash 4 MB.
@@ -40,6 +41,11 @@ from bootloader import enter_bootloader, exit_bootloader
 from cp210x import CP210x
 from esp32_rom import ESP32ROM, ROMError
 from usbdevfs import USBError
+
+
+# ESP32 classic eFuse BLK0 read-data registers.
+EFUSE_BLK0_RDATA1_REG = 0x3FF5A004
+EFUSE_BLK0_RDATA2_REG = 0x3FF5A008
 
 
 def log(msg: str) -> None:
@@ -114,6 +120,7 @@ def get_worker_args() -> list[str]:
 
     return [a for a in argv_args if not str(a).isdigit()]
 
+
 def parse_operation(args: list[str]) -> tuple[str, str | None, int | None]:
     op = "detect"
     path = None
@@ -130,6 +137,7 @@ def parse_operation(args: list[str]) -> tuple[str, str | None, int | None]:
         i += 1
     return op, path, offset
 
+
 def configure_cp210x(fd: int, debug: bool = False) -> CP210x:
     uart = CP210x(fd, debug=debug)
 
@@ -143,6 +151,29 @@ def configure_cp210x(fd: int, debug: bool = False) -> CP210x:
     log("[THÀNH CÔNG] SET_MHS")
 
     return uart
+
+
+def read_factory_mac(rom: ESP32ROM) -> bytes:
+    """Đọc Factory MAC 48-bit từ eFuse BLK0 của ESP32 classic.
+
+    ESP32 lưu 32 bit thấp tại RDATA1 và 16 bit cao của MAC tại
+    RDATA2[15:0]. Phần CRC eFuse ở các bit cao của RDATA2 không thuộc MAC.
+    """
+    rdata1 = rom.read_reg(EFUSE_BLK0_RDATA1_REG)
+    rdata2 = rom.read_reg(EFUSE_BLK0_RDATA2_REG)
+
+    log(f"[eFuse] RDATA1 @ 0x{EFUSE_BLK0_RDATA1_REG:08X} = 0x{rdata1:08X}")
+    log(f"[eFuse] RDATA2 @ 0x{EFUSE_BLK0_RDATA2_REG:08X} = 0x{rdata2:08X}")
+
+    mac_value = ((rdata2 & 0xFFFF) << 32) | (rdata1 & 0xFFFFFFFF)
+    mac = mac_value.to_bytes(6, "big")
+
+    if mac == b"\x00" * 6:
+        raise ROMError("Factory MAC eFuse toàn 00.")
+    if mac == b"\xFF" * 6:
+        raise ROMError("Factory MAC eFuse toàn FF.")
+
+    return mac
 
 
 def detect_flash(rom: ESP32ROM) -> dict:
@@ -215,7 +246,6 @@ def run(debug: bool = False) -> int:
         enter_bootloader(uart)
         log("[THÀNH CÔNG] Đã chuyển sang Download Mode")
 
-
         rom = ESP32ROM(
             uart,
             baud=115200,
@@ -237,13 +267,29 @@ def run(debug: bool = False) -> int:
         log("[THÀNH CÔNG] READ_REG")
 
         # ---------------------------------------------------------
-        # 3. SPI ATTACH
+        # 3. READ FACTORY MAC
+        # ---------------------------------------------------------
+        if op == "read-mac":
+            mac = read_factory_mac(rom)
+            mac_text = mac.hex(":").upper()
+
+            log(f"[THÀNH CÔNG] Factory MAC: {mac_text}")
+            log(f"[THÔNG TIN] MAC eFuse: {mac_text}")
+
+            log("[ĐANG LÀM] Thoát Download Mode / reset ESP32")
+            exit_bootloader(uart)
+            log("[THÀNH CÔNG] ESP32 đã được reset")
+            log("[HOÀN TẤT] USB Worker ESP32 v3")
+            return 0
+
+        # ---------------------------------------------------------
+        # 4. SPI ATTACH
         # ---------------------------------------------------------
         rom.spi_attach()
         log("[THÀNH CÔNG] SPI_ATTACH")
 
         # ---------------------------------------------------------
-        # 4. JEDEC / FLASH SIZE
+        # 5. JEDEC / FLASH SIZE
         # ---------------------------------------------------------
         flash_info = detect_flash(rom)
 
