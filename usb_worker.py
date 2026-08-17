@@ -267,20 +267,28 @@ def run(debug: bool = False) -> int:
         log("[THÀNH CÔNG] READ_REG")
 
         # ---------------------------------------------------------
-        # 3. READ FACTORY MAC
+        # 3. READ FACTORY MAC / DEVICE ID
         # ---------------------------------------------------------
-        if op == "read-mac":
+        mac = None
+        mac_text = None
+        device_id = None
+
+        if op in {"read-mac", "info"}:
             mac = read_factory_mac(rom)
             mac_text = mac.hex(":").upper()
+            device_id = mac.hex().upper()
 
             log(f"[THÀNH CÔNG] Factory MAC: {mac_text}")
-            log(f"[THÔNG TIN] MAC eFuse: {mac_text}")
+            log(f"[THÔNG TIN] Device ID: {device_id}")
 
-            log("[ĐANG LÀM] Thoát Download Mode / reset ESP32")
-            exit_bootloader(uart)
-            log("[THÀNH CÔNG] ESP32 đã được reset")
-            log("[HOÀN TẤT] USB Worker ESP32 v3")
-            return 0
+            if op == "read-mac":
+                log(f"[THÔNG TIN] MAC eFuse: {mac_text}")
+
+                log("[ĐANG LÀM] Thoát Download Mode / reset ESP32")
+                exit_bootloader(uart)
+                log("[THÀNH CÔNG] ESP32 đã được reset")
+                log("[HOÀN TẤT] USB Worker ESP32 v3")
+                return 0
 
         # ---------------------------------------------------------
         # 4. SPI ATTACH
@@ -329,8 +337,39 @@ def run(debug: bool = False) -> int:
             log("[ĐANG LÀM] Thoát Download Mode / reset ESP32")
             exit_bootloader(uart)
             log("[THÀNH CÔNG] ESP32 đã được reset")
-        elif op in {"detect", "info"}:
+        elif op == "detect":
             pass
+
+        elif op == "info":
+            # Thông tin đã được đọc trong cùng phiên ROM.
+            # Không đọc lại MAC/Flash để tránh log trùng.
+            log("════════ THÔNG TIN ESP32 ════════")
+            log(f"Chip          : {chip}")
+            log(f"Device ID     : {device_id or 'N/A'}")
+            log(f"Factory MAC   : {mac_text or 'N/A'}")
+            log(f"Magic         : 0x{rom.magic:08X}")
+            log(
+                f"JEDEC ID      : "
+                f"{flash_info.get('jedec_id', 'N/A')}"
+            )
+            log(
+                f"Flash         : "
+                f"{flash_size // (1024 * 1024)} MB "
+                f"({flash_size} bytes)"
+            )
+            log(
+                f"Manufacturer  : "
+                f"0x{flash_info.get('manufacturer', 0):02X}"
+            )
+            log(
+                f"Memory type   : "
+                f"0x{flash_info.get('memory_type', 0):02X}"
+            )
+            log(
+                f"Capacity code : "
+                f"0x{flash_info.get('capacity', 0):02X}"
+            )
+            log("═════════════════════════════════")
         elif op == "erase-chip":
             flash_size = flash_info.get("size_bytes")
 

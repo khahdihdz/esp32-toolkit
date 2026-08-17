@@ -524,19 +524,16 @@ def run_usb_worker(
     # rỗng, menu vẫn phải nhận được kết quả.
     # -----------------------------------------------------
 
-    combined_stdout = stdout
-
-    if after_log:
-
-        if combined_stdout:
-            combined_stdout += "\n"
-
-        combined_stdout += after_log
-
+    # -----------------------------------------------------
+    # Trả kết quả cho menu
+    # -----------------------------------------------------
+    # Live log đã được in ở phía trên.
+    # Không đưa after_log vào stdout nữa để tránh
+    # print_result() in lại toàn bộ callback log lần thứ hai.
     return subprocess.CompletedProcess(
         cmd,
         proc.returncode,
-        combined_stdout,
+        stdout,
         stderr,
     )
 

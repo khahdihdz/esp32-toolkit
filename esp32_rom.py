@@ -587,6 +587,17 @@ class ESP32ROM:
     # ========================================================
 
     def read_reg(self, addr):
+        """
+        Đọc một thanh ghi ESP32 ROM.
+
+        READ_REG chỉ có opcode chung nên response không chứa lại
+        địa chỉ thanh ghi. Vì vậy phải loại bỏ dữ liệu/frame cũ
+        trước khi gửi từng READ_REG để tránh lấy nhầm response
+        của lệnh trước.
+        """
+
+        # Dọn dữ liệu UART/SLIP còn sót từ lệnh READ_REG trước.
+        self._drain_input(0.08)
 
         value, _ = self.command(
             READ_REG,
@@ -596,6 +607,7 @@ class ESP32ROM:
             ),
             0,
             3.0,
+            retries=1,
         )
 
         return value
