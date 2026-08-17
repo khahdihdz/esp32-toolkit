@@ -615,7 +615,7 @@ _PART_RULES: list[
 
     (
         r"littlefs\.bin$",
-        "0x3D0000",
+        "0x290000",
         "LittleFS / Web Dashboard"
     ),
 ]
