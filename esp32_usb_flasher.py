@@ -21,19 +21,20 @@ def banner():
 ║  1. 🔍 Kiểm tra kết nối ESP32                      ║
 ║  2. 🔌 Kết nối USB / chọn thiết bị                 ║
 ║  3. 🚀 Đưa ESP32 vào chế độ nạp                    ║
-║  4. ℹ️  Xem thông tin ESP32                       ║
-║  5. 📁 Nạp firmware .BIN                           ║
-║  6. 📦 Nạp nhiều file BIN                          ║
-║  7. 💾 Đọc dữ liệu từ Flash                       ║
-║  8. 🔍 Kiểm tra firmware                           ║
-║  9. 🧹 Xóa Flash                                   ║
-║ 10. ⚙️  Cài đặt tốc độ truyền                      ║
-║ 11. 🧪 Kiểm tra phần cứng USB                     ║
-║ 12. 📝 Xem nhật ký                                 ║
-║ 13. 🧪 SYNC RAW / debug USB                        ║
-║ 14. 🧭 Tự nhận diện firmware & nạp                 ║
-║ 15. 📟 Serial Monitor / trạng thái firmware       ║
-║  0. ❌ Thoát                                       ║
+║  4. ℹ️  Xem thông tin ESP32                        ║
+║  5. 🆔 Đọc Factory MAC / eFuse                     ║
+║  6. 📁 Nạp firmware .BIN                           ║
+║  7. 📦 Nạp nhiều file BIN                          ║
+║  8. 💾 Đọc dữ liệu từ Flash                        ║
+║  9. 🔍 Kiểm tra firmware                            ║
+║ 10. 🧹 Xóa Flash                                    ║
+║ 11. ⚙️  Cài đặt tốc độ truyền                       ║
+║ 12. 🧪 Kiểm tra phần cứng USB                      ║
+║ 13. 📝 Xem nhật ký                                  ║
+║ 14. 🧪 SYNC RAW / debug USB                         ║
+║ 15. 🧭 Tự nhận diện firmware & nạp                  ║
+║ 16. 📟 Serial Monitor / trạng thái firmware        ║
+║  0. ❌ Thoát                                        ║
 ╚════════════════════════════════════════════════════╝""")
 
 def choose_device():
@@ -159,21 +160,24 @@ def menu():
                 if device: call(device,"--op","info")
             elif c=="5":
                 device=device or choose_device()
+                if device: call(device,"--op","read-mac")
+            elif c=="6":
+                device=device or choose_device()
                 f=ask_file()
                 if device and f:
                     off=input("Offset [0x10000]: ").strip() or "0x10000"
                     call(device,"--op","flash","--file",f,"--offset",off)
-            elif c=="6":
+            elif c=="7":
                 device=device or choose_device()
                 if device: multi_flash(device)
-            elif c=="7":
+            elif c=="8":
                 device=device or choose_device()
                 if device:
                     off=input("Offset [0x10000]: ").strip() or "0x10000"
                     ln=input("Số byte cần đọc (ví dụ 0x200000): ").strip()
                     out=input("File output [readback.bin]: ").strip() or "readback.bin"
                     call(device,"--op","readback","--offset",off,"--length",ln,"--output",out)
-            elif c=="8":
+            elif c=="9":
                 device=device or choose_device()
                 if device:
                     f=ask_file()
@@ -181,26 +185,26 @@ def menu():
                         off=input("Offset [0x10000]: ").strip() or "0x10000"
                         ln=input(f"Số byte [kích thước {Path(f).stat().st_size}]: ").strip() or str(Path(f).stat().st_size)
                         call(device,"--op","verify","--file",f,"--offset",off,"--length",ln)
-            elif c=="9":
+            elif c=="10":
                 device=device or choose_device()
                 if device: erase_flash(device)
-            elif c=="10":
+            elif c=="11":
                 print("Baud hỗ trợ: 115200 / 230400 / 460800 / 921600")
                 print("Thiết lập baud được truyền cho worker ở lần thao tác kế tiếp.")
                 print("Phiên bản v3 giữ 115200 làm tốc độ ROM mặc định để ưu tiên ổn định.")
-            elif c=="11":
+            elif c=="12":
                 device=device or choose_device()
                 if device: call(device,"--op","hardware-test")
-            elif c=="12":
+            elif c=="13":
                 logs=list((ROOT/"logs").glob("*.log"))
                 print("\n".join(str(x) for x in logs[-20:]) or "Chưa có log.")
-            elif c=="13":
-                device=device or choose_device()
-                if device: call(device,"--op","sync-raw","--debug")
             elif c=="14":
                 device=device or choose_device()
-                if device: auto_detect_flash(device)
+                if device: call(device,"--op","sync-raw","--debug")
             elif c=="15":
+                device=device or choose_device()
+                if device: auto_detect_flash(device)
+            elif c=="16":
                 device=device or choose_device()
                 if device:
                     baud=input("Baud [115200]: ").strip() or "115200"
@@ -228,6 +232,7 @@ def cli():
     p.add_argument("--device")
     p.add_argument("--detect",action="store_true")
     p.add_argument("--info",action="store_true")
+    p.add_argument("--read-mac",action="store_true",dest="read_mac")
     p.add_argument("--hardware-test",action="store_true")
     p.add_argument("--monitor",action="store_true")
     p.add_argument("--baud",type=int,default=115200)
@@ -242,6 +247,7 @@ def cli():
     if not d: raise SystemExit(1)
     if a.detect: call(d,"--op","detect")
     elif a.info: call(d,"--op","info")
+    elif a.read_mac: call(d,"--op","read-mac")
     elif a.hardware_test: call(d,"--op","hardware-test")
     elif a.monitor:
         m=["--baud",str(a.baud)]
