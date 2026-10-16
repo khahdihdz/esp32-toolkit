@@ -7,3 +7,8 @@ dist/
 .vscode/
 .idea/
 *.swp
+logs/
+.worker_request.json
+.worker_request.*.tmp
+espflash-live.log
+readback.bin

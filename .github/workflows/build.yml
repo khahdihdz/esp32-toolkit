@@ -1,50 +1,27 @@
-name: Build ESP32 Firmware
+name: Tests (Python)
 
 on:
   push:
     branches: [main, master]
-    paths:
-      - "src/**"
-      - "main/**"
-      - "CMakeLists.txt"
-      - "sdkconfig*"
-      - ".github/workflows/build.yml"
+  pull_request:
   workflow_dispatch: {}
 
 jobs:
-  build:
-    name: Build firmware (ESP-IDF)
+  test:
+    name: Unit tests
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
     steps:
       - name: Checkout mã nguồn
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
-      - name: Cài đặt ESP-IDF và build firmware
-        uses: espressif/esp-idf-ci-action@v1
+      - name: Cài Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
         with:
-          esp_idf_version: release-v5.2
-          target: esp32
-          command: idf.py build
+          python-version: ${{ matrix.python-version }}
 
-      - name: Sao chép các file firmware cần thiết
-        run: |
-          mkdir -p dist
-          BUILD_DIR="build"
-          cp "$BUILD_DIR/bootloader/bootloader.bin" dist/bootloader.bin
-          cp "$BUILD_DIR/partition_table/partition-table.bin" dist/partitions.bin
-          # boot_app0.bin đến từ thư viện arduino-esp32 / esp-idf tùy dự án;
-          # nếu không tồn tại trong build dir, lấy từ thư mục components.
-          if [ -f "$BUILD_DIR/ota_data_initial.bin" ]; then
-            cp "$BUILD_DIR/ota_data_initial.bin" dist/boot_app0.bin
-          fi
-          cp "$BUILD_DIR"/*.bin dist/firmware.bin 2>/dev/null || true
-
-      - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: esp32-firmware
-          path: dist/
-          if-no-files-found: warn
-          retention-days: 30
+      - name: Chạy unit tests
+        run: python -m unittest discover -s tests -v

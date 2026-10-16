@@ -1,13 +1,17 @@
 #!/data/data/com.termux/files/usr/bin/bash
-set -e
+set -euo pipefail
+
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-ROOT="/data/data/com.termux/files/home/esp32-toolkit"
-cat > "$PREFIX/bin/espflash-usb-callback" <<'EOF'
+# Repo = thư mục chứa script cài đặt này (bỏ hard-code đường dẫn tuyệt đối).
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON="${PYTHON:-$PREFIX/bin/python}"
+CALLBACK="$PREFIX/bin/espflash-usb-callback"
+
+cat > "$CALLBACK" <<EOF
 #!/data/data/com.termux/files/usr/bin/bash
 set -e
-ROOT="/data/data/com.termux/files/home/esp32-toolkit"
-PYTHON="/data/data/com.termux/files/usr/bin/python"
-exec "$PYTHON" -u "$ROOT/usb_worker.py" "$@"
+exec "$PYTHON" -u "$ROOT/usb_worker.py" "\$@"
 EOF
-chmod 755 "$PREFIX/bin/espflash-usb-callback"
-echo "[OK] Đã cài callback: $PREFIX/bin/espflash-usb-callback"
+
+chmod 755 "$CALLBACK"
+echo "[OK] Đã cài callback: $CALLBACK"

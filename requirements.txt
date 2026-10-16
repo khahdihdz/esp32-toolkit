@@ -1,2 +1,9 @@
-Không có dependency Python bên ngoài.
-Chỉ Python 3 + Termux:API/termux-usb.
+# ESP32 USB Flasher v3 — không có dependency Python bên ngoài.
+#
+# Chỉ cần Python 3 và Termux:API (lệnh `termux-usb`).
+# Cài trên Termux:
+#   pkg update
+#   pkg install python termux-api
+#
+# File này cố ý không liệt kê package nào để `pip install -r requirements.txt`
+# vẫn chạy thành công mà không cài thêm gì.
