@@ -3,7 +3,7 @@
 """ESP32 USB Flasher v3 - MENU chạy trực tiếp trong Termux."""
 
 from __future__ import annotations
-import argparse, os, sys, tempfile
+import argparse, sys
 from pathlib import Path
 from utils import (
     list_usb_devices, run_usb_worker, print_result, valid_bin, sha256_file,

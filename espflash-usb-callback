@@ -1,8 +1,10 @@
 #!/data/data/com.termux/files/usr/bin/bash
-set -e
+set -euo pipefail
 
-ROOT="/data/data/com.termux/files/home/esp32-toolkit"
-PYTHON="/data/data/com.termux/files/usr/bin/python"
-WORKER="$ROOT/usb_worker.py"
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+# Thư mục chứa worker; có thể ghi đè bằng ESPFLASH_WORKER_ROOT.
+# Mặc định trỏ tới repo trong $HOME thay vì hard-code đường dẫn tuyệt đối.
+ROOT="${ESPFLASH_WORKER_ROOT:-$HOME/esp32-toolkit}"
+PYTHON="${PYTHON:-$PREFIX/bin/python}"
 
-exec "$PYTHON" -u "$WORKER" "$@"
+exec "$PYTHON" -u "$ROOT/usb_worker.py" "$@"

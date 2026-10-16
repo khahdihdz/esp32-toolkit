@@ -8,13 +8,36 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 from pathlib import Path
 
 
-TERMUX_API = "/data/data/com.termux/files/usr/bin/termux-usb"
-PYTHON = "/data/data/com.termux/files/usr/bin/python"
+# Tiền tố Termux/Python suy ra từ $PREFIX thay vì hard-code đường dẫn tuyệt đối.
+PREFIX = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
+
+
+def _find_bin(names, fallback):
+    """Trả về đường dẫn thực thi đầu tiên tìm thấy, hoặc fallback."""
+
+    for name in names:
+
+        found = shutil.which(name)
+
+        if found:
+            return found
+
+        candidate = os.path.join(PREFIX, "bin", name)
+
+        if os.path.exists(candidate):
+            return candidate
+
+    return fallback
+
+
+TERMUX_API = _find_bin(("termux-usb",), os.path.join(PREFIX, "bin", "termux-usb"))
+PYTHON = _find_bin(("python", "python3"), os.path.join(PREFIX, "bin", "python"))
 
 ROOT = Path(__file__).resolve().parent
 WORKER = ROOT / "usb_worker.py"

@@ -60,15 +60,16 @@ chmod +x *.sh
 ./install.sh
 ```
 
-## Tự nhận diện firmware & offset (mục 13)
+## Tự nhận diện firmware & offset (mục 15)
 
-Menu `13` quét một thư mục (mặc định thư mục hiện tại) và tự khớp tên file với offset chuẩn:
+Menu `15` quét một thư mục (mặc định thư mục hiện tại) và tự khớp tên file với offset chuẩn:
 
 | Tên file khớp (không phân biệt hoa/thường) | Offset  | Ý nghĩa |
 |---|---|---|
 | `bootloader*.bin` | `0x1000` | Bootloader |
 | `partitions.bin`, `partition-table.bin`, `partition_table.bin` | `0x8000` | Bảng phân vùng |
 | `boot_app0*.bin`, `ota_data_initial*.bin` | `0xE000` | OTA data init |
+| `littlefs.bin` | `0x290000` | LittleFS / Web Dashboard |
 | `firmware.bin`, `app.bin`, `*.ino.bin` | `0x10000` | Firmware (app) |
 | `merged*.bin`, `*.factory.bin` | `0x0` | Firmware gộp — nếu có, **chỉ nạp file này**, bỏ qua các file trên |
 
@@ -102,7 +103,7 @@ cd ~/esp32-toolkit
 python esp32_usb_flasher.py --menu
 ```
 
-Chọn `11` trước khi flash.
+Chọn `3` trước khi flash (đưa ESP32 vào chế độ nạp).
 
 ## ESP32 ROM protocol
 
@@ -133,9 +134,9 @@ v3 **không giả định ESP32 có 4 MB**. ROM-only flash readback được tri
 
 Bản v3 hiện không tự nhận dung lượng vật lý từ JEDEC trong menu info; do đó không tự báo `4 MB` khi chưa có dữ liệu xác thực. Khi flash, có thể truyền `--flash-size` cho worker nếu cần giới hạn vùng ghi.
 
-## Xóa Flash (mục 9) — mặc định xóa toàn bộ chip
+## Xóa Flash (mục 10) — mặc định xóa toàn bộ chip
 
-Mục `9` mặc định **xóa toàn bộ chip** (giống `erase_flash` chuẩn của esptool), không bắt chọn vùng trước:
+Mục `10` mặc định **xóa toàn bộ chip** (giống `erase_flash` chuẩn của esptool), không bắt chọn vùng trước:
 
 ```text
 Xóa Flash — mặc định xóa TOÀN BỘ chip (mọi dữ liệu → 0xFF).
@@ -221,13 +222,20 @@ Nếu board vẫn không tự vào được sau bản vá, khả năng cao là m
 
 Đã sửa trình tự DTR/RTS theo Espressif, dọn RX trước SYNC, tiêu thụ các response SYNC dư, hiển thị lỗi SYNC chi tiết và thêm `sync-raw`. Chế độ debug in tối đa 64 byte mỗi USB Bulk TX/RX.
 
-\n## V3 Fixed 4 — Termux callback\n\n
+## V3 Fixed 4 — Termux callback
+
 Trên HONOR X7d/Termux hiện tại, `termux-usb -e` truyền USB FD vào
 argument cuối của callback nhưng environment của tiến trình gọi không
 được bảo đảm truyền sang callback. V3 Fixed 4 không còn phụ thuộc vào
 `ESPFLASH_WORKER_ARGS_B64`: mỗi lần flash tạo wrapper tạm chứa các tham
 số nghiệp vụ, sau đó `termux-usb` truyền FD vào wrapper và wrapper chuyển
-FD cùng các tham số sang `usb_worker.py`. Không sử dụng `-E`.\n
+FD cùng các tham số sang `usb_worker.py`. Không sử dụng `-E`.
 
 ## Fixed 6
 Request được ghi atomic vào `.worker_request.json`; request được giữ lại nếu callback/worker thất bại để chẩn đoán. Callback cố định trong `$PREFIX/bin` chuyển FD cuối cùng cho worker.
+
+## Hạn chế đã biết (v3)
+
+- Các thao tác `readback` (mục `8`), `verify` (mục `9`), `hardware-test` (mục `12`) và `sync-raw` (mục `14`) hiện **chưa được nối** vào `usb_worker.py`; worker mới chỉ xử lý `detect`, `info`, `read-mac`, `flash`, `erase-chip`.
+- Mục `11` (Cài đặt tốc độ truyền) hiện chỉ hiển thị thông báo; worker luôn dùng 115200.
+- `serial_monitor.py` vẫn dùng cơ chế `-E`/`TERMUX_USB_FD`, khác với đường worker (request-file).
