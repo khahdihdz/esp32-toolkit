@@ -60,9 +60,9 @@ chmod +x *.sh
 ./install.sh
 ```
 
-## Tự nhận diện firmware & offset (mục 13)
+## Tự nhận diện firmware & offset (mục 7)
 
-Menu `13` quét một thư mục (mặc định thư mục hiện tại) và tự khớp tên file với offset chuẩn:
+Menu `7` quét một thư mục (mặc định thư mục hiện tại) và tự khớp tên file với offset chuẩn:
 
 | Tên file khớp (không phân biệt hoa/thường) | Offset  | Ý nghĩa |
 |---|---|---|
@@ -74,7 +74,7 @@ Menu `13` quét một thư mục (mặc định thư mục hiện tại) và t�
 
 Có quét cả thư mục con tối đa 3 cấp để bắt được cấu trúc `build/`, `build/bootloader/`, `build/partition_table/` của ESP-IDF. Nếu 2 file cùng khớp 1 offset, file ở cấp thư mục nông hơn (gần thư mục gốc hơn) được giữ, file còn lại bị bỏ qua kèm cảnh báo. Sau khi quét, menu in danh sách để xác nhận trước khi nạp — không tự nạp khi chưa xác nhận.
 
-Nếu tên file không theo chuẩn trên, dùng mục `6` (nhập tay từng cặp offset + file) như trước.
+Nếu tên file không theo chuẩn trên, dùng mục `5` (một file) hoặc mục `6` (nhiều file, nhập tay từng cặp offset + file).
 
 ## Kiểm tra callback USB
 
@@ -92,7 +92,7 @@ Kiểm tra worker:
 
 ```bash
 termux-usb -E -e ~/esp32-toolkit/run_worker.sh \
-/dev/bus/usb/001/002 --op hardware-test
+/dev/bus/usb/001/002 --op info
 ```
 
 ## Chạy menu
@@ -102,7 +102,23 @@ cd ~/esp32-toolkit
 python esp32_usb_flasher.py --menu
 ```
 
-Chọn `11` trước khi flash.
+Menu chính:
+
+| Mục | Chức năng |
+|---|---|
+| `1` | Kiểm tra kết nối / đưa ESP32 vào Download Mode |
+| `2` | Chọn thiết bị USB |
+| `3` | Xem thông tin chip & Flash |
+| `4` | Đọc Factory MAC |
+| `5` | Nạp một file `.bin` |
+| `6` | Nạp nhiều file `.bin` |
+| `7` | Tự nhận diện firmware trong thư mục & nạp |
+| `8` | Xóa toàn bộ Flash |
+| `9` | Serial Monitor |
+| `10` | Xem nhật ký hoạt động |
+| `0` | Thoát |
+
+Các thao tác đọc lại Flash, xác minh và test phần cứng chưa được worker v3 hỗ trợ nên không còn hiển thị trong menu.
 
 ## ESP32 ROM protocol
 
@@ -129,31 +145,20 @@ ESP32 classic ROM dùng checksum XOR bắt đầu từ `0xEF` và block flash 0x
 
 ## Lưu ý về flash size
 
-v3 **không giả định ESP32 có 4 MB**. ROM-only flash readback được triển khai bằng `READ_FLASH_SLOW`, giới hạn 64 byte mỗi command. Đây là phương thức chậm nhưng phù hợp mục tiêu không dùng flasher stub.
+v3 **không giả định ESP32 có 4 MB**. Worker đọc JEDEC sau `SPI_ATTACH` để lấy dung lượng Flash thực và dùng dung lượng đó cho `SET_FLASH_PARAMS`.
 
-Bản v3 hiện không tự nhận dung lượng vật lý từ JEDEC trong menu info; do đó không tự báo `4 MB` khi chưa có dữ liệu xác thực. Khi flash, có thể truyền `--flash-size` cho worker nếu cần giới hạn vùng ghi.
+`esp32_rom.py` vẫn có `READ_FLASH_SLOW` (giới hạn 64 byte mỗi lệnh) nhưng menu v3 chưa nối thao tác readback vì worker chưa hỗ trợ.
 
-## Xóa Flash (mục 9) — mặc định xóa toàn bộ chip
+## Xóa Flash (mục 8) — xóa toàn bộ chip
 
-Mục `9` mặc định **xóa toàn bộ chip** (giống `erase_flash` chuẩn của esptool), không bắt chọn vùng trước:
+Mục `8` xóa **toàn bộ chip** bằng lệnh `ERASE_FLASH` của ROM (giống `erase_flash` chuẩn của esptool):
 
-```text
-Xóa Flash — mặc định xóa TOÀN BỘ chip (mọi dữ liệu → 0xFF).
-Dung lượng Flash thật của chip (ví dụ 0x400000 cho 4 MB), hoặc gõ 'v' để xóa một vùng riêng thay vì toàn bộ:
-```
+- Không cần nhập dung lượng, offset hay kích thước.
+- Menu yêu cầu xác nhận `C/K` trước khi xóa.
+- Toàn bộ dữ liệu trên Flash chuyển thành `0xFF`; thao tác không thể hoàn tác.
+- Thời gian xóa có thể từ 30 giây đến vài phút tùy dung lượng chip.
 
-- Nhập dung lượng chip (ví dụ `0x400000` cho 4 MB) → xóa toàn bộ từ `0x0`.
-- Gõ `v` → chuyển sang menu phụ để xóa một vùng cụ thể (dùng khi chỉ cần xóa lại bootloader hoặc partition table mà không muốn mất OTA data/app):
-
-| Lựa chọn | Vùng | Offset | Kích thước mặc định |
-|---|---|---|---|
-| `1` | Bootloader | `0x1000` | `0x7000` |
-| `2` | Bảng phân vùng (partition table) | `0x8000` | `0x1000` |
-| `3` | boot_app0 / OTA data init | `0xE000` | `0x1000` |
-| `4` | Vùng ứng dụng (app) | `0x10000` | `0x100000` (1 MB, có thể chỉnh) |
-| `6` | Tùy chỉnh | tự nhập | tự nhập |
-
-Offset của các vùng dùng chung bảng với mục `13` (tự nhận diện firmware) nên luôn nhất quán. Kích thước nhập vào đều được **tự động làm tròn lên bội số `0x1000`**. v3 không tự giả định dung lượng Flash (xem phần "Lưu ý về flash size" bên dưới), nên xóa toàn bộ luôn bắt gõ tay dung lượng thật để tránh xóa nhầm.
+Các preset xóa vùng (`Bootloader`, `Partition table`, `boot_app0`, `Vùng ứng dụng`) vẫn có trong `utils.py` nhưng chưa được nối vào menu v3.
 
 ## Sửa lỗi ROM báo `command 0x04: 01060000` khi Xóa Flash
 
@@ -169,16 +174,11 @@ Nếu DTR/RTS không đưa được chip vào Download Mode:
 2. Nhấn EN/RESET.
 3. Giữ BOOT 1–2 giây.
 4. Thả BOOT.
-5. Chạy lại mục `1` hoặc `11`.
+5. Chạy lại mục `1`.
 
 ## Verify
 
-Verify phải đọc lại Flash thật rồi tính:
-
-- MD5
-- SHA-256
-
-Chỉ khi dữ liệu đọc lại khớp mới báo thành công.
+Sau khi nạp, `esp32_flash.py` đọc lại MD5 vùng vừa ghi bằng `SPI_FLASH_MD5`; chỉ khi MD5 khớp mới báo thành công. Menu v3 chưa có mục verify riêng vì worker chưa hỗ trợ thao tác đọc lại toàn vùng.
 
 ## Unit tests
 
@@ -200,8 +200,8 @@ Cấu trúc command, checksum, block 0x400, `FLASH_BEGIN/DATA/END`, `SPI_ATTACH`
 - Không mở `/dev/bus/usb/...` từ Python.
 - CP2102 control transfer + Bulk OUT/IN dùng USBDEVFS.
 - ROM implementation hiện tập trung vào **ESP32 classic / ESP32-WROOM-32**. Các ESP32-S2/S3/C3/C6 có ROM protocol khác ở một số phần và không được giả định là ESP32 classic.
-- `READ_FLASH_SLOW (0x0E)` giới hạn 64 byte/lệnh theo ROM ESP32 classic nên readback lớn sẽ chậm.
-- v3 chưa tự đọc JEDEC flash size; vì vậy **không tự báo 4 MB**. Đây là chủ ý để tránh hard-code dung lượng.
+- `READ_FLASH_SLOW (0x0E)` giới hạn 64 byte/lệnh theo ROM ESP32 classic nên readback lớn sẽ chậm; menu v3 chưa nối thao tác này.
+- Worker tự đọc JEDEC flash size sau `SPI_ATTACH`, không hard-code 4 MB.
 
 
 ## Sửa lỗi `termux-usb: too many arguments`
@@ -210,11 +210,11 @@ v3 dùng `termux-usb -E -e run_worker.sh DEVICE` và truyền tham số Worker q
 
 ## Sửa lỗi trình tự BOOT/EN (không tự vào Download Mode)
 
-`bootloader.py` trước đây gọi các bước `set_mhs()` **sai thứ tự**: EN được thả ra khỏi reset (`set_mhs(False, False)`) **trước khi** GPIO0 được kéo xuống thấp (`set_mhs(True, False)`). ESP32 chỉ lấy mẫu strap GPIO0 đúng vào thời điểm EN chuyển từ thấp lên cao (thoát reset) — vì thứ tự cũ sai, chip thường thoát reset với GPIO0 đang ở mức cao và boot thẳng vào firmware thường thay vì ROM Download Mode, nên phải bấm BOOT tay (mục `3`) mới nạp được.
+`bootloader.py` trước đây gọi các bước `set_mhs()` **sai thứ tự**: EN được thả ra khỏi reset (`set_mhs(False, False)`) **trước khi** GPIO0 được kéo xuống thấp (`set_mhs(True, False)`). ESP32 chỉ lấy mẫu strap GPIO0 đúng vào thời điểm EN chuyển từ thấp lên cao (thoát reset) — vì thứ tự cũ sai, chip thường thoát reset với GPIO0 đang ở mức cao và boot thẳng vào firmware thường thay vì ROM Download Mode, nên phải giữ BOOT tay mới nạp được.
 
-Đã sửa lại đúng theo trình tự `UnixTightReset` của esptool: kéo GPIO0 xuống thấp *trước*, giữ nguyên trong lúc thả EN, rồi mới thả GPIO0. Sau bản vá này, mục `1`/`3`/`5` nên tự vào Download Mode mà không cần giữ nút BOOT, miễn mạch auto-reset trên board đúng chuẩn (2 transistor, active-low qua DTR/RTS).
+Đã sửa lại đúng theo trình tự `UnixTightReset` của esptool: kéo GPIO0 xuống thấp *trước*, giữ nguyên trong lúc thả EN, rồi mới thả GPIO0. Sau bản vá này, mục `1` (kiểm tra kết nối), `3` (thông tin chip) và `4` (đọc MAC) nên tự vào Download Mode mà không cần giữ nút BOOT, miễn mạch auto-reset trên board đúng chuẩn (2 transistor, active-low qua DTR/RTS).
 
-Nếu board vẫn không tự vào được sau bản vá, khả năng cao là mạch auto-reset trên board đảo cực khác chuẩn — dùng mục `3` (giữ BOOT thủ công) làm phương án dự phòng.
+Nếu board vẫn không tự vào được sau bản vá, khả năng cao là mạch auto-reset trên board đảo cực khác chuẩn — giữ BOOT thủ công rồi chạy mục `1` làm phương án dự phòng.
 
 
 ## v3.1 — chẩn đoán SYNC
