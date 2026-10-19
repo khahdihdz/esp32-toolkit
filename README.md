@@ -1,8 +1,11 @@
 # ESP32 Toolkit — USB Flasher v3 cho Termux
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-online-2ea44f?logo=github)](https://khahdihdz.github.io/esp32-toolkit/)
 
 Công cụ nạp, xóa và kiểm tra ESP32 qua USB OTG trên Android/Termux. Viết thuần Python, giao tiếp trực tiếp với ESP32 ROM Bootloader qua CP210x và USBDEVFS — không cần root, không dùng `pyserial`/`pyusb`/`libusb`.
+
+> Trang giới thiệu tính năng: <https://khahdihdz.github.io/esp32-toolkit/>
 
 ## Tính năng
 
