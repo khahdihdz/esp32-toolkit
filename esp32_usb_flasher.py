@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""ESP32 USB Flasher v3 - MENU chạy trực tiếp trong Termux."""
+"""ESP32 Toolkit - USB Flasher v3: MENU chạy trực tiếp trong Termux."""
 
 from __future__ import annotations
 import argparse, os, sys, tempfile
@@ -12,30 +12,62 @@ from utils import (
 
 ROOT=Path(__file__).resolve().parent
 
+LOGO = """
+       │   │   │   │   │   │   │   │   │   │
+       ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+       █ ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄ █
+       █ █       ESP32  •  TOOLKIT       █ █
+       █ █       USB FLASHER  •  v3      █ █
+       █ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ █
+       ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+       │   │   │   │   │   │   │   │   │   │
+"""
+
+MENU_SECTIONS = (
+    ("THIẾT BỊ & KIỂM TRA", (
+        ("1", "Kiểm tra kết nối / vào Download Mode"),
+        ("2", "Chọn thiết bị USB"),
+        ("3", "Thông tin chip & Flash"),
+        ("4", "Đọc Factory MAC"),
+    )),
+    ("NẠP FIRMWARE", (
+        ("5", "Nạp một file .BIN"),
+        ("6", "Nạp nhiều file .BIN"),
+        ("7", "Tự nhận diện firmware & nạp"),
+    )),
+    ("FLASH", (
+        ("8", "Xóa toàn bộ Flash"),
+    )),
+    ("TIỆN ÍCH", (
+        ("9", "Serial Monitor"),
+        ("10", "Nhật ký hoạt động"),
+    )),
+)
+
+_MENU_WIDTH = 58
+
+
+def _menu_row(text: str = "") -> str:
+    inner = _MENU_WIDTH - 4
+    return "║ " + text[:inner].ljust(inner) + " ║"
+
+
+def _menu_rule(left: str, mid: str, right: str) -> str:
+    return left + mid * (_MENU_WIDTH - 2) + right
+
+
 def banner():
-    print("""
-╔════════════════════════════════════════════════════╗
-║              ESP32 USB FLASHER v3                  ║
-║        HONOR X7d • Termux • USB OTG               ║
-╠════════════════════════════════════════════════════╣
-║  1. 🔍 Kiểm tra kết nối ESP32                      ║
-║  2. 🔌 Kết nối USB / chọn thiết bị                 ║
-║  3. 🚀 Đưa ESP32 vào chế độ nạp                    ║
-║  4. ℹ️  Xem thông tin ESP32                        ║
-║  5. 🆔 Đọc Factory MAC / eFuse                     ║
-║  6. 📁 Nạp firmware .BIN                           ║
-║  7. 📦 Nạp nhiều file BIN                          ║
-║  8. 💾 Đọc dữ liệu từ Flash                        ║
-║  9. 🔍 Kiểm tra firmware                            ║
-║ 10. 🧹 Xóa Flash                                    ║
-║ 11. ⚙️  Cài đặt tốc độ truyền                       ║
-║ 12. 🧪 Kiểm tra phần cứng USB                      ║
-║ 13. 📝 Xem nhật ký                                  ║
-║ 14. 🧪 SYNC RAW / debug USB                         ║
-║ 15. 🧭 Tự nhận diện firmware & nạp                  ║
-║ 16. 📟 Serial Monitor / trạng thái firmware        ║
-║  0. ❌ Thoát                                        ║
-╚════════════════════════════════════════════════════╝""")
+    print(LOGO.strip("\n"))
+    print(_menu_rule("╔", "═", "╗"))
+    print(_menu_row("MENU CHÍNH".center(_MENU_WIDTH - 4)))
+    print(_menu_rule("╠", "═", "╣"))
+    for title, items in MENU_SECTIONS:
+        print(_menu_row(title))
+        for key, label in items:
+            print(_menu_row(f"  {key:>2}. {label}"))
+        print(_menu_rule("╠", "═", "╣"))
+    print(_menu_row("  0. Thoát"))
+    print(_menu_rule("╚", "═", "╝"))
 
 def choose_device():
     ds=list_usb_devices()
@@ -138,6 +170,23 @@ def erase_flash(device):
         return
     call(device, "--op", "erase-chip")
 
+def show_logs():
+    log_dir = ROOT / "logs"
+    live_log = Path.home() / "espflash-live.log"
+    logs = sorted(log_dir.glob("*.log"))
+
+    print(f"\nThư mục log : {log_dir}")
+    print(f"Live log    : {live_log}")
+
+    if not logs:
+        print("Chưa có file log trong logs/.")
+        return
+
+    print("\nCác file log gần nhất:")
+    for path in logs[-20:]:
+        print(f"  {path.name}  ({path.stat().st_size:,} byte)")
+
+
 def menu():
     device=None
     while True:
@@ -154,57 +203,26 @@ def menu():
                 print("[THÀNH CÔNG] Đã chọn:",device) if device else None
             elif c=="3":
                 device=device or choose_device()
-                if device: call(device,"--op","detect")
+                if device: call(device,"--op","info")
             elif c=="4":
                 device=device or choose_device()
-                if device: call(device,"--op","info")
-            elif c=="5":
-                device=device or choose_device()
                 if device: call(device,"--op","read-mac")
-            elif c=="6":
+            elif c=="5":
                 device=device or choose_device()
                 f=ask_file()
                 if device and f:
                     off=input("Offset [0x10000]: ").strip() or "0x10000"
                     call(device,"--op","flash","--file",f,"--offset",off)
-            elif c=="7":
+            elif c=="6":
                 device=device or choose_device()
                 if device: multi_flash(device)
-            elif c=="8":
-                device=device or choose_device()
-                if device:
-                    off=input("Offset [0x10000]: ").strip() or "0x10000"
-                    ln=input("Số byte cần đọc (ví dụ 0x200000): ").strip()
-                    out=input("File output [readback.bin]: ").strip() or "readback.bin"
-                    call(device,"--op","readback","--offset",off,"--length",ln,"--output",out)
-            elif c=="9":
-                device=device or choose_device()
-                if device:
-                    f=ask_file()
-                    if f:
-                        off=input("Offset [0x10000]: ").strip() or "0x10000"
-                        ln=input(f"Số byte [kích thước {Path(f).stat().st_size}]: ").strip() or str(Path(f).stat().st_size)
-                        call(device,"--op","verify","--file",f,"--offset",off,"--length",ln)
-            elif c=="10":
-                device=device or choose_device()
-                if device: erase_flash(device)
-            elif c=="11":
-                print("Baud hỗ trợ: 115200 / 230400 / 460800 / 921600")
-                print("Thiết lập baud được truyền cho worker ở lần thao tác kế tiếp.")
-                print("Phiên bản v3 giữ 115200 làm tốc độ ROM mặc định để ưu tiên ổn định.")
-            elif c=="12":
-                device=device or choose_device()
-                if device: call(device,"--op","hardware-test")
-            elif c=="13":
-                logs=list((ROOT/"logs").glob("*.log"))
-                print("\n".join(str(x) for x in logs[-20:]) or "Chưa có log.")
-            elif c=="14":
-                device=device or choose_device()
-                if device: call(device,"--op","sync-raw","--debug")
-            elif c=="15":
+            elif c=="7":
                 device=device or choose_device()
                 if device: auto_detect_flash(device)
-            elif c=="16":
+            elif c=="8":
+                device=device or choose_device()
+                if device: erase_flash(device)
+            elif c=="9":
                 device=device or choose_device()
                 if device:
                     baud=input("Baud [115200]: ").strip() or "115200"
@@ -218,6 +236,8 @@ def menu():
                     if r=="C": monitor_args.append("--reset")
                     if "--debug" in sys.argv: monitor_args.append("--debug")
                     run_serial_monitor(device, *monitor_args)
+            elif c=="10":
+                show_logs()
             else:
                 print("[LỖI] Lựa chọn không hợp lệ.")
         except KeyboardInterrupt:
@@ -227,13 +247,12 @@ def menu():
         input("\nNhấn Enter để tiếp tục...")
 
 def cli():
-    p=argparse.ArgumentParser(description="ESP32 USB Flasher v3")
+    p=argparse.ArgumentParser(description="ESP32 Toolkit - USB Flasher v3")
     p.add_argument("--menu",action="store_true")
     p.add_argument("--device")
     p.add_argument("--detect",action="store_true")
     p.add_argument("--info",action="store_true")
     p.add_argument("--read-mac",action="store_true",dest="read_mac")
-    p.add_argument("--hardware-test",action="store_true")
     p.add_argument("--monitor",action="store_true")
     p.add_argument("--baud",type=int,default=115200)
     p.add_argument("--reset",action="store_true")
@@ -248,7 +267,6 @@ def cli():
     if a.detect: call(d,"--op","detect")
     elif a.info: call(d,"--op","info")
     elif a.read_mac: call(d,"--op","read-mac")
-    elif a.hardware_test: call(d,"--op","hardware-test")
     elif a.monitor:
         m=["--baud",str(a.baud)]
         if a.reset: m.append("--reset")
