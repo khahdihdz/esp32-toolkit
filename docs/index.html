@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESP32 Toolkit — Nạp ESP32 trên Termux</title>
+  <meta name="description" content="Bộ công cụ nạp, xóa và kiểm tra ESP32 qua USB OTG trong Termux. Python thuần, không root, không pyserial/pyusb/libusb.">
+  <meta name="theme-color" content="#060b14">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <meta property="og:title" content="ESP32 Toolkit — Nạp ESP32 trên Termux">
+  <meta property="og:description" content="Nạp, xóa và kiểm tra ESP32 qua USB OTG trong Termux. Python thuần, không root.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://khahdihdz.github.io/esp32-toolkit/">
+</head>
+<body>
+  <a class="skip-link" href="#main">Bỏ qua điều hướng</a>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="#top" aria-label="ESP32 Toolkit — về đầu trang">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="6" y="6" width="12" height="12" rx="3"></rect>
+            <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"></path>
+            <circle cx="12" cy="12" r="2.2"></circle>
+          </svg>
+        </span>
+        <span class="brand-text">ESP32 <strong>Toolkit</strong></span>
+      </a>
+
+      <nav class="nav" aria-label="Điều hướng chính">
+        <a href="#features">Tính năng</a>
+        <a href="#menu">Menu</a>
+        <a href="#install">Cài đặt</a>
+        <a href="#architecture">Kiến trúc</a>
+        <a class="nav-github" href="https://github.com/khahdihdz/esp32-toolkit" target="_blank" rel="noreferrer">GitHub ↗</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="dot" aria-hidden="true"></span> Termux • USB OTG • Python thuần</p>
+          <h1>Nạp ESP32 ngay trên <span class="grad">chiếc điện thoại</span> của bạn.</h1>
+          <p class="lead">ESP32 Toolkit là bộ công cụ nạp, xóa và kiểm tra ESP32 qua USB OTG trong Termux. Không root, không <code>pyserial</code>, không <code>pyusb</code>, không <code>libusb</code>.</p>
+          <div class="actions">
+            <a class="btn btn-primary" href="#install">Bắt đầu cài đặt</a>
+            <a class="btn btn-ghost" href="https://github.com/khahdihdz/esp32-toolkit" target="_blank" rel="noreferrer">Xem mã nguồn</a>
+          </div>
+          <ul class="hero-points">
+            <li>Không cần root</li>
+            <li>ESP32 classic</li>
+            <li>Mã nguồn mở GPL-3.0</li>
+          </ul>
+        </div>
+
+        <div class="hero-art" aria-hidden="true">
+          <div class="glow-orb"></div>
+          <svg class="chip-art" viewBox="0 0 360 360">
+            <defs>
+              <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#132744"></stop>
+                <stop offset="1" stop-color="#08111f"></stop>
+              </linearGradient>
+              <linearGradient id="die" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#0b1a2d"></stop>
+                <stop offset="1" stop-color="#06101d"></stop>
+              </linearGradient>
+              <linearGradient id="pin" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#38bdf8"></stop>
+                <stop offset="1" stop-color="#2dd4bf"></stop>
+              </linearGradient>
+              <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="5" result="blur"></feGaussianBlur>
+                <feMerge>
+                  <feMergeNode in="blur"></feMergeNode>
+                  <feMergeNode in="SourceGraphic"></feMergeNode>
+                </feMerge>
+              </filter>
+            </defs>
+
+            <g stroke="url(#pin)" stroke-width="7" stroke-linecap="round">
+              <path d="M90 34v26M120 34v26M150 34v26M180 34v26M210 34v26M240 34v26M270 34v26"></path>
+              <path d="M90 300v26M120 300v26M150 300v26M180 300v26M210 300v26M240 300v26M270 300v26"></path>
+              <path d="M34 90h26M34 120h26M34 150h26M34 180h26M34 210h26M34 240h26M34 270h26"></path>
+              <path d="M300 90h26M300 120h26M300 150h26M300 180h26M300 210h26M300 240h26M300 270h26"></path>
+            </g>
+
+            <rect x="60" y="60" width="240" height="240" rx="32" fill="url(#body)" stroke="#2dd4bf" stroke-width="2"></rect>
+            <rect x="96" y="96" width="168" height="168" rx="20" fill="url(#die)" stroke="#1e3a5f" stroke-width="2"></rect>
+            <text x="180" y="170" text-anchor="middle" class="chip-title">ESP32</text>
+            <text x="180" y="200" text-anchor="middle" class="chip-subtitle">TOOLKIT</text>
+            <circle cx="180" cy="232" r="6" fill="#2dd4bf" filter="url(#glow)"></circle>
+            <path d="M120 232h40M200 232h40" stroke="#1e3a5f" stroke-width="2" stroke-linecap="round"></path>
+          </svg>
+          <span class="float-badge badge-1">USB OTG</span>
+          <span class="float-badge badge-2">Python</span>
+          <span class="float-badge badge-3">GPL-3.0</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="features">
+      <div class="container">
+        <div class="section-head">
+          <p class="eyebrow">Tính năng</p>
+          <h2>Mọi thứ cần thiết để làm việc với ESP32</h2>
+          <p>Từ nạp firmware, xóa Flash đến đọc thông tin chip và theo dõi log — tất cả trong một menu chạy trực tiếp trên Termux.</p>
+        </div>
+
+        <div class="feature-grid">
+          <article class="feature-card">
+            <span class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13l0-8Z"></path></svg>
+            </span>
+            <h3>Nạp firmware linh hoạt</h3>
+            <p>Nạp một hoặc nhiều file <code>.bin</code> theo offset. Hỗ trợ cả firmware gộp <code>merged</code> / <code>factory</code>.</p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="2.5"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>
+            </span>
+            <h3>Tự nhận diện firmware</h3>
+            <p>Quét thư mục và khớp <code>bootloader</code>, <code>partitions</code>, <code>boot_app0</code>, app, <code>littlefs</code> theo offset chuẩn.</p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg>
+            </span>
+            <h3>Xóa toàn bộ Flash</h3>
+            <p><code>ERASE_FLASH</code> giống <code>esptool erase_flash</code>. Có bước xác nhận trước khi xóa và không thể hoàn tác.</p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="3"></rect><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"></path><circle cx="12" cy="12" r="2.2"></circle></svg>
+            </span>
+            <h3>Thông tin chip &amp; MAC</h3>
+            <p>Đọc chip, JEDEC ID, dung lượng Flash thực và Factory MAC từ eFuse — không hard-code 4 MB.</p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m7 9 3 3-3 3M13 15h4"></path></svg>
+            </span>
+            <h3>Serial Monitor</h3>
+            <p>Theo dõi boot log qua CP210x, hỗ trợ reset bằng DTR/RTS và chọn baud trực tiếp trong menu.</p>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3Z"></path><path d="m9 12 2 2 4-4"></path></svg>
+            </span>
+            <h3>An toàn &amp; minh bạch</h3>
+            <p>Kiểm tra MD5 sau khi nạp bằng <code>SPI_FLASH_MD5</code>. Mã nguồn mở, giấy phép GPL-3.0.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="menu">
+      <div class="container">
+        <div class="section-head">
+          <p class="eyebrow">Menu chính</p>
+          <h2>Mười lựa chọn, một luồng làm việc rõ ràng</h2>
+          <p>Menu được nhóm theo thiết bị, nạp firmware, Flash và tiện ích. Các thao tác chưa được worker hỗ trợ sẽ không hiển thị.</p>
+        </div>
+
+        <div class="menu-grid">
+          <div class="menu-item"><span class="menu-num">1</span><div><strong>Kiểm tra kết nối</strong><span>SYNC và đưa ESP32 vào Download Mode</span></div></div>
+          <div class="menu-item"><span class="menu-num">2</span><div><strong>Chọn thiết bị USB</strong><span>Liệt kê thiết bị qua <code>termux-usb</code></span></div></div>
+          <div class="menu-item"><span class="menu-num">3</span><div><strong>Thông tin chip &amp; Flash</strong><span>Chip, JEDEC ID, dung lượng Flash</span></div></div>
+          <div class="menu-item"><span class="menu-num">4</span><div><strong>Đọc Factory MAC</strong><span>Đọc 48-bit MAC từ eFuse</span></div></div>
+          <div class="menu-item"><span class="menu-num">5</span><div><strong>Nạp một file .bin</strong><span>Chọn file và offset thủ công</span></div></div>
+          <div class="menu-item"><span class="menu-num">6</span><div><strong>Nạp nhiều file .bin</strong><span>Nhập từng cặp offset + file</span></div></div>
+          <div class="menu-item"><span class="menu-num">7</span><div><strong>Tự nhận diện &amp; nạp</strong><span>Quét thư mục, khớp offset chuẩn</span></div></div>
+          <div class="menu-item"><span class="menu-num">8</span><div><strong>Xóa toàn bộ Flash</strong><span><code>ERASE_FLASH</code> với xác nhận</span></div></div>
+          <div class="menu-item"><span class="menu-num">9</span><div><strong>Serial Monitor</strong><span>Đọc boot log qua CP210x</span></div></div>
+          <div class="menu-item"><span class="menu-num">10</span><div><strong>Nhật ký hoạt động</strong><span>Xem thư mục log và live log</span></div></div>
+        </div>
+
+        <p class="note">Các thao tác <code>readback</code>, <code>verify</code>, <code>hardware-test</code> và <code>sync-raw</code> chưa được nối vào worker nên không có trong menu.</p>
+      </div>
+    </section>
+
+    <section class="section" id="install">
+      <div class="container two-col">
+        <div>
+          <p class="eyebrow">Cài đặt</p>
+          <h2>Chạy trong vài phút</h2>
+          <ol class="steps">
+            <li>Cài Termux, Python và Termux:API.</li>
+            <li>Đặt repo tại <code>~/esp32-toolkit</code>.</li>
+            <li>Chạy <code>install.sh</code> và <code>install_callback.sh</code>.</li>
+            <li>Mở menu, chọn thiết bị USB và bắt đầu.</li>
+          </ol>
+          <a class="btn btn-primary" href="https://github.com/khahdihdz/esp32-toolkit#readme" target="_blank" rel="noreferrer">Hướng dẫn đầy đủ</a>
+        </div>
+
+        <div class="code-card">
+          <div class="code-head">
+            <span>Termux</span>
+            <button type="button" data-copy="install-code">Chép</button>
+          </div>
+          <pre id="install-code"><code>pkg update
+pkg install python
+
+cd ~/esp32-toolkit
+chmod +x *.sh
+./install.sh
+./install_callback.sh
+
+python esp32_usb_flasher.py --menu</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="architecture">
+      <div class="container">
+        <div class="section-head">
+          <p class="eyebrow">Kiến trúc</p>
+          <h2>Menu và USB worker tách biệt</h2>
+          <p>Menu chạy trực tiếp trong Termux để <code>input()</code> hoạt động. Worker USB chỉ chạy trong callback của <code>termux-usb</code>.</p>
+        </div>
+
+        <div class="arch" aria-label="Luồng xử lý từ menu đến ESP32">
+          <div class="arch-step"><strong>Menu Python</strong><span>Termux</span></div>
+          <div class="arch-step"><strong>termux-usb</strong><span>callback</span></div>
+          <div class="arch-step"><strong>usb_worker.py</strong><span>USB FD</span></div>
+          <div class="arch-step"><strong>USBDEVFS</strong><span>CP2102</span></div>
+          <div class="arch-step"><strong>ESP32 ROM</strong><span>SLIP</span></div>
+          <div class="arch-step"><strong>Flash / App</strong><span>0x10000</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="compatibility">
+      <div class="container two-col">
+        <div>
+          <p class="eyebrow">Tương thích</p>
+          <h2>Dành cho ESP32 classic</h2>
+          <p>Phù hợp với các board ESP32 DevKit phổ biến dùng CP2102/CP2102N và kết nối USB OTG trên Android.</p>
+          <ul class="check-list">
+            <li>ESP32 / ESP32-WROOM-32</li>
+            <li>CP2102 / CP2102N</li>
+            <li>Android + Termux + USB OTG</li>
+            <li>Python 3 + Termux:API</li>
+          </ul>
+        </div>
+
+        <div class="notice">
+          <h3>Giới hạn hiện tại</h3>
+          <ul>
+            <li><code>readback</code>, <code>verify</code>, <code>hardware-test</code>, <code>sync-raw</code> chưa nối vào worker.</li>
+            <li>Menu chưa đổi baud; Serial Monitor nhận <code>--baud</code> riêng.</li>
+            <li>Không hard-code 4 MB; dung lượng Flash lấy từ JEDEC.</li>
+            <li><code>READ_FLASH_SLOW</code> giới hạn 64 byte/lệnh nên readback lớn sẽ chậm.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <p>ESP32 Toolkit • GPL-3.0 • 2026</p>
+      <div class="footer-links">
+        <a href="https://github.com/khahdihdz/esp32-toolkit" target="_blank" rel="noreferrer">GitHub</a>
+        <a href="https://github.com/khahdihdz/esp32-toolkit#readme" target="_blank" rel="noreferrer">README</a>
+        <a href="https://github.com/khahdihdz/esp32-toolkit/blob/main/LICENSE" target="_blank" rel="noreferrer">Giấy phép</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    document.querySelectorAll("[data-copy]").forEach(function (button) {
+      button.addEventListener("click", async function () {
+        var target = document.getElementById(button.dataset.copy);
+        if (!target) return;
+        var original = button.textContent;
+        try {
+          await navigator.clipboard.writeText(target.innerText);
+          button.textContent = "Đã chép";
+        } catch (error) {
+          button.textContent = "Không chép được";
+        }
+        window.setTimeout(function () {
+          button.textContent = original;
+        }, 1600);
+      });
+    });
+  </script>
+</body>
+</html>
