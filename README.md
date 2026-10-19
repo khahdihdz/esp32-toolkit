@@ -1,41 +1,36 @@
-# ESP32 USB Flasher v3 — Termux Android
+# ESP32 Toolkit — USB Flasher v3 cho Termux
+
+Công cụ nạp, xóa và kiểm tra ESP32 qua USB OTG trên Android/Termux. Viết thuần Python, giao tiếp trực tiếp với ESP32 ROM Bootloader qua CP210x và USBDEVFS — không cần root, không dùng `pyserial`/`pyusb`/`libusb`.
+
+## Tính năng
+
+- Nạp một hoặc nhiều file `.bin` theo offset.
+- Tự nhận diện firmware theo tên file.
+- Xóa toàn bộ Flash bằng `ERASE_FLASH`.
+- Đọc thông tin chip, JEDEC ID, dung lượng Flash, Factory MAC.
+- Serial Monitor qua CP210x.
+- Tự vào Download Mode bằng DTR/RTS; kiểm tra MD5 sau khi nạp.
 
 ## Kiến trúc
 
 ```text
-Menu Python chạy trực tiếp trong Termux
-        ↓
-termux-usb -E
-        ↓
-run_worker.sh
-        ↓
-usb_worker.py
-        ↓
-TERMUX_USB_FD
-        ↓
-USBDEVFS
-        ↓
-CP2102 / CP2102N
-        ↓
-Bulk OUT 0x01 / Bulk IN 0x81
-        ↓
-ESP32 ROM Bootloader
-        ↓
-SLIP
+Menu Python (Termux)
+  → termux-usb -e
+  → espflash-usb-callback
+  → usb_worker.py
+  → USB FD → USBDEVFS → CP2102/CP2102N
+  → Bulk OUT 0x01 / Bulk IN 0x81
+  → ESP32 ROM Bootloader → SLIP
 ```
 
-Menu **không** chạy dưới `termux-usb`, vì vậy `input()` hoạt động bình thường trên Termux. Worker USB mới chạy trong callback và lấy `TERMUX_USB_FD`.
+Menu chạy trực tiếp trong Termux để `input()` hoạt động; worker USB chỉ chạy trong callback của `termux-usb`.
 
-## Không dùng
+## Yêu cầu
 
-- pyserial
-- pyusb
-- libusb
-- ADB
-- MTP
-- `/dev/ttyUSB*`
-- `/dev/ttyACM*`
-- root
+- Termux + Python 3.
+- Termux:API và gói `termux-api`.
+- Cáp USB OTG; board dùng CP2102/CP2102N.
+- ESP32 classic / ESP32-WROOM-32.
 
 ## Cài đặt
 
@@ -44,131 +39,103 @@ pkg update
 pkg install python
 ```
 
-Cài Termux:API tương thích với Termux và bảo đảm lệnh `termux-usb` hoạt động.
-
-Giải nén thư mục vào:
-
-```text
-/data/data/com.termux/files/home/esp32-toolkit
-```
-
-Sau đó:
+Đặt repo tại `/data/data/com.termux/files/home/esp32-toolkit`, sau đó:
 
 ```bash
 cd ~/esp32-toolkit
 chmod +x *.sh
 ./install.sh
+./install_callback.sh
 ```
 
-## Tự nhận diện firmware & offset (mục 7)
-
-Menu `7` quét một thư mục (mặc định thư mục hiện tại) và tự khớp tên file với offset chuẩn:
-
-| Tên file khớp (không phân biệt hoa/thường) | Offset  | Ý nghĩa |
-|---|---|---|
-| `bootloader*.bin` | `0x1000` | Bootloader |
-| `partitions.bin`, `partition-table.bin`, `partition_table.bin` | `0x8000` | Bảng phân vùng |
-| `boot_app0*.bin`, `ota_data_initial*.bin` | `0xE000` | OTA data init |
-| `firmware.bin`, `app.bin`, `*.ino.bin` | `0x10000` | Firmware (app) |
-| `merged*.bin`, `*.factory.bin` | `0x0` | Firmware gộp — nếu có, **chỉ nạp file này**, bỏ qua các file trên |
-
-Có quét cả thư mục con tối đa 3 cấp để bắt được cấu trúc `build/`, `build/bootloader/`, `build/partition_table/` của ESP-IDF. Nếu 2 file cùng khớp 1 offset, file ở cấp thư mục nông hơn (gần thư mục gốc hơn) được giữ, file còn lại bị bỏ qua kèm cảnh báo. Sau khi quét, menu in danh sách để xác nhận trước khi nạp — không tự nạp khi chưa xác nhận.
-
-Nếu tên file không theo chuẩn trên, dùng mục `5` (một file) hoặc mục `6` (nhiều file, nhập tay từng cặp offset + file).
-
-## Kiểm tra callback USB
-
-```bash
-termux-usb -l
-```
-
-Ví dụ thiết bị:
-
-```text
-/dev/bus/usb/001/002
-```
-
-Kiểm tra worker:
-
-```bash
-termux-usb -E -e ~/esp32-toolkit/run_worker.sh \
-/dev/bus/usb/001/002 --op info
-```
+`install_callback.sh` cài `espflash-usb-callback` vào `$PREFIX/bin`. Kiểm tra thiết bị bằng `termux-usb -l`.
 
 ## Chạy menu
 
 ```bash
 cd ~/esp32-toolkit
 python esp32_usb_flasher.py --menu
+# hoặc
+./start.sh
 ```
-
-Menu chính:
 
 | Mục | Chức năng |
 |---|---|
-| `1` | Kiểm tra kết nối / đưa ESP32 vào Download Mode |
+| `1` | Kiểm tra kết nối / vào Download Mode |
 | `2` | Chọn thiết bị USB |
 | `3` | Xem thông tin chip & Flash |
 | `4` | Đọc Factory MAC |
 | `5` | Nạp một file `.bin` |
 | `6` | Nạp nhiều file `.bin` |
-| `7` | Tự nhận diện firmware trong thư mục & nạp |
+| `7` | Tự nhận diện firmware & nạp |
 | `8` | Xóa toàn bộ Flash |
 | `9` | Serial Monitor |
 | `10` | Xem nhật ký hoạt động |
 | `0` | Thoát |
 
-Các thao tác đọc lại Flash, xác minh và test phần cứng chưa được worker v3 hỗ trợ nên không còn hiển thị trong menu.
+Các thao tác `readback`, `verify`, `hardware-test`, `sync-raw` chưa được worker hỗ trợ nên không hiển thị trong menu.
 
-## ESP32 ROM protocol
+Chạy nhanh bằng CLI:
 
-v3 dùng packet ROM dạng:
-
-```text
-direction(1) command(1) length(2) checksum(4) payload
+```bash
+python esp32_usb_flasher.py --detect
+python esp32_usb_flasher.py --info
+python esp32_usb_flasher.py --read-mac
+python esp32_usb_flasher.py --flash firmware.bin --offset 0x10000
+python esp32_usb_flasher.py --monitor --baud 115200 --reset
 ```
 
-và SLIP `C0 ... C0`.
+## Quy trình nạp firmware
 
-Các command chính:
+1. Cắm ESP32 qua USB OTG.
+2. Chọn `2` nếu có nhiều thiết bị USB.
+3. Chọn `1` để kiểm tra kết nối / đưa ESP32 vào Download Mode.
+4. Chọn `3` để xem chip và dung lượng Flash.
+5. Chọn `5`, `6` hoặc `7` để nạp; chọn `9` để xem Serial Monitor.
 
-- `SYNC = 0x08`
-- `READ_REG = 0x0A`
-- `SPI_ATTACH = 0x0D`
-- `READ_FLASH_SLOW = 0x0E`
-- `CHANGE_BAUD = 0x0F`
-- `FLASH_BEGIN = 0x02`
-- `FLASH_DATA = 0x03`
-- `FLASH_END = 0x04`
+## Tự nhận diện firmware (mục 7)
 
-ESP32 classic ROM dùng checksum XOR bắt đầu từ `0xEF` và block flash 0x400 byte.
+Menu `7` quét thư mục hiện tại (hoặc thư mục bạn nhập) và khớp tên file với offset chuẩn:
 
-## Lưu ý về flash size
+| Tên file (không phân biệt hoa/thường) | Offset | Ý nghĩa |
+|---|---|---|
+| `bootloader*.bin` | `0x1000` | Bootloader |
+| `partitions.bin`, `partition-table.bin`, `partition_table.bin` | `0x8000` | Bảng phân vùng |
+| `boot_app0*.bin`, `ota_data_initial*.bin` | `0xE000` | OTA data init |
+| `firmware.bin`, `app.bin`, `*.ino.bin` | `0x10000` | Firmware (app) |
+| `littlefs.bin` | `0x290000` | LittleFS / Web Dashboard |
+| `merged*.bin`, `*.factory.bin` | `0x0` | Firmware gộp |
 
-v3 **không giả định ESP32 có 4 MB**. Worker đọc JEDEC sau `SPI_ATTACH` để lấy dung lượng Flash thực và dùng dung lượng đó cho `SET_FLASH_PARAMS`.
+- Quét thư mục con tối đa 3 cấp (`build/`, `build/bootloader/`, `build/partition_table/`).
+- File trùng offset: giữ file ở cấp thư mục nông hơn, bỏ qua file còn lại kèm cảnh báo.
+- Có `merged*.bin` hoặc `*.factory.bin` thì chỉ nạp file gộp, bỏ qua các file khác.
+- Menu luôn in danh sách để xác nhận trước khi nạp.
 
-`esp32_rom.py` vẫn có `READ_FLASH_SLOW` (giới hạn 64 byte mỗi lệnh) nhưng menu v3 chưa nối thao tác readback vì worker chưa hỗ trợ.
+Nếu tên file không theo chuẩn, dùng mục `5` hoặc `6` để nhập offset thủ công.
 
-## Xóa Flash (mục 8) — xóa toàn bộ chip
+## Xóa Flash (mục 8)
 
-Mục `8` xóa **toàn bộ chip** bằng lệnh `ERASE_FLASH` của ROM (giống `erase_flash` chuẩn của esptool):
+Mục `8` xóa **toàn bộ chip** bằng `ERASE_FLASH` của ROM (giống `erase_flash` của esptool):
 
 - Không cần nhập dung lượng, offset hay kích thước.
-- Menu yêu cầu xác nhận `C/K` trước khi xóa.
-- Toàn bộ dữ liệu trên Flash chuyển thành `0xFF`; thao tác không thể hoàn tác.
-- Thời gian xóa có thể từ 30 giây đến vài phút tùy dung lượng chip.
+- Cần xác nhận `C/K` trước khi xóa.
+- Dữ liệu trên Flash chuyển thành `0xFF`; không thể hoàn tác.
+- Thời gian xóa: khoảng 30 giây đến vài phút tùy dung lượng chip.
 
-Các preset xóa vùng (`Bootloader`, `Partition table`, `boot_app0`, `Vùng ứng dụng`) vẫn có trong `utils.py` nhưng chưa được nối vào menu v3.
+Các preset xóa vùng có trong `utils.py` nhưng chưa được nối vào menu v3.
 
-## Sửa lỗi ROM báo `command 0x04: 01060000` khi Xóa Flash
+## Giao thức & kỹ thuật
 
-`erase_by_flash_begin()` trước đây gọi `FLASH_BEGIN` rồi gọi thẳng `FLASH_END`, bỏ qua các gói `FLASH_DATA`. ROM ESP32 thật ghi nhận số block đã khai báo trong `FLASH_BEGIN` (`num_blocks`) và chờ nhận đủ từng đó gói `FLASH_DATA` trước khi chấp nhận `FLASH_END` — nhận `FLASH_END` sớm khiến ROM báo lỗi trạng thái `0x06` ("không thực hiện được lệnh nhận"), hiển thị dạng `ESP32 ROM báo lỗi command 0x04: 01060000`.
+- Packet ROM: `direction(1) command(1) length(2) checksum(4) payload`, bọc SLIP `C0 ... C0`.
+- Command chính: `SYNC 0x08`, `READ_REG 0x0A`, `SPI_ATTACH 0x0D`, `SPI_SET_PARAMS 0x0B`, `READ_FLASH_SLOW 0x0E`, `CHANGE_BAUD 0x0F`, `FLASH_BEGIN 0x02`, `FLASH_DATA 0x03`, `FLASH_END 0x04`, `SPI_FLASH_MD5 0x13`, `ERASE_FLASH 0xD0`.
+- Checksum XOR bắt đầu từ `0xEF`; block flash `0x400` byte; sector `0x1000` byte.
+- Không hard-code 4 MB: worker đọc JEDEC sau `SPI_ATTACH` rồi truyền dung lượng thực cho `SET_FLASH_PARAMS`.
+- Sau khi nạp, `esp32_flash.py` đọc lại MD5 bằng `SPI_FLASH_MD5`; chỉ báo thành công khi MD5 khớp.
+- `READ_FLASH_SLOW` giới hạn 64 byte/lệnh; menu chưa nối readback.
 
-Đã sửa: sau `FLASH_BEGIN`, gửi đủ số block `FLASH_DATA` toàn byte `0xFF` (khớp trạng thái đã xóa mà `FLASH_BEGIN` vừa tạo ra) rồi mới gọi `FLASH_END`. Có test `tests/test_erase.py` khoá lại đúng thứ tự `begin → data × N → end`.
+## Khắc phục lỗi
 
-## BOOT
-
-Nếu DTR/RTS không đưa được chip vào Download Mode:
+### ESP32 không vào Download Mode
 
 1. Giữ BOOT.
 2. Nhấn EN/RESET.
@@ -176,58 +143,48 @@ Nếu DTR/RTS không đưa được chip vào Download Mode:
 4. Thả BOOT.
 5. Chạy lại mục `1`.
 
-## Verify
+Nếu board dùng mạch auto-reset đảo cực khác chuẩn, giữ BOOT thủ công rồi chạy mục `1`.
 
-Sau khi nạp, `esp32_flash.py` đọc lại MD5 vùng vừa ghi bằng `SPI_FLASH_MD5`; chỉ khi MD5 khớp mới báo thành công. Menu v3 chưa có mục verify riêng vì worker chưa hỗ trợ thao tác đọc lại toàn vùng.
+### `termux-usb: too many arguments`
 
-## Unit tests
+Không truyền `--op`, `--file`... trực tiếp sau đường dẫn thiết bị. Dùng menu hoặc CLI của công cụ. Kiểm tra callback:
+
+```bash
+ls -l "$PREFIX/bin/espflash-usb-callback"
+# nếu chưa có:
+./install_callback.sh
+```
+
+### ROM báo `command 0x04: 01060000` khi xóa Flash
+
+Nguyên nhân cũ: gửi `FLASH_END` trước khi gửi đủ số gói `FLASH_DATA` mà `FLASH_BEGIN` đã khai báo. Đã sửa bằng cách gửi đủ block `FLASH_DATA` toàn byte `0xFF` rồi mới gọi `FLASH_END`; `tests/test_erase.py` khoá lại thứ tự này.
+
+### Serial Monitor không có dữ liệu
+
+- Kiểm tra đúng baud (mặc định `115200`).
+- Chọn reset `C` để bắt boot log.
+- Serial Monitor không đưa ESP32 vào Download Mode và không flash/erase.
+- Kiểm tra dây TX/RX và driver CP210x.
+
+## Giới hạn hiện tại
+
+- Tập trung vào **ESP32 classic / ESP32-WROOM-32**; ESP32-S2/S3/C3/C6 có thể khác protocol.
+- `readback`, `verify`, `hardware-test`, `sync-raw` chưa được nối vào worker/menu.
+- Menu chưa đổi baud; Serial Monitor nhận `--baud` riêng.
+- Không hard-code 4 MB; dung lượng Flash lấy từ JEDEC.
+
+## Kiểm thử & lịch sử
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
+- **v3.1** — chẩn đoán SYNC, sửa thứ tự DTR/RTS theo Espressif, thêm `sync-raw`.
+- **V3 Fixed 4/6** — ổn định callback Termux và request của worker.
+- **Bản hiện tại** — thêm logo ESP32, menu gọn 1–10, ẩn mục chưa hỗ trợ, đồng bộ README.
+
+Chi tiết xem `git log`.
+
 ## Nguồn protocol
 
-Cấu trúc command, checksum, block 0x400, `FLASH_BEGIN/DATA/END`, `SPI_ATTACH` và ROM `READ_FLASH_SLOW` được đối chiếu với mã nguồn esptool của Espressif. v3 không import esptool và không dùng pyserial.
-
-
-## Trạng thái v3
-
-- Đã tách hoàn toàn menu và USB worker.
-- Menu chạy trực tiếp bằng Python trong Termux.
-- Worker chỉ chạy thông qua `termux-usb -E`.
-- Worker lấy `TERMUX_USB_FD` từ môi trường.
-- Không mở `/dev/bus/usb/...` từ Python.
-- CP2102 control transfer + Bulk OUT/IN dùng USBDEVFS.
-- ROM implementation hiện tập trung vào **ESP32 classic / ESP32-WROOM-32**. Các ESP32-S2/S3/C3/C6 có ROM protocol khác ở một số phần và không được giả định là ESP32 classic.
-- `READ_FLASH_SLOW (0x0E)` giới hạn 64 byte/lệnh theo ROM ESP32 classic nên readback lớn sẽ chậm; menu v3 chưa nối thao tác này.
-- Worker tự đọc JEDEC flash size sau `SPI_ATTACH`, không hard-code 4 MB.
-
-
-## Sửa lỗi `termux-usb: too many arguments`
-
-v3 dùng `termux-usb -E -e run_worker.sh DEVICE` và truyền tham số Worker qua biến môi trường Base64. Không truyền `--op`, `--file`... trực tiếp sau DEVICE. Đây là cách tương thích với callback Termux:API đang dùng trên HONOR X7d.
-
-## Sửa lỗi trình tự BOOT/EN (không tự vào Download Mode)
-
-`bootloader.py` trước đây gọi các bước `set_mhs()` **sai thứ tự**: EN được thả ra khỏi reset (`set_mhs(False, False)`) **trước khi** GPIO0 được kéo xuống thấp (`set_mhs(True, False)`). ESP32 chỉ lấy mẫu strap GPIO0 đúng vào thời điểm EN chuyển từ thấp lên cao (thoát reset) — vì thứ tự cũ sai, chip thường thoát reset với GPIO0 đang ở mức cao và boot thẳng vào firmware thường thay vì ROM Download Mode, nên phải giữ BOOT tay mới nạp được.
-
-Đã sửa lại đúng theo trình tự `UnixTightReset` của esptool: kéo GPIO0 xuống thấp *trước*, giữ nguyên trong lúc thả EN, rồi mới thả GPIO0. Sau bản vá này, mục `1` (kiểm tra kết nối), `3` (thông tin chip) và `4` (đọc MAC) nên tự vào Download Mode mà không cần giữ nút BOOT, miễn mạch auto-reset trên board đúng chuẩn (2 transistor, active-low qua DTR/RTS).
-
-Nếu board vẫn không tự vào được sau bản vá, khả năng cao là mạch auto-reset trên board đảo cực khác chuẩn — giữ BOOT thủ công rồi chạy mục `1` làm phương án dự phòng.
-
-
-## v3.1 — chẩn đoán SYNC
-
-Đã sửa trình tự DTR/RTS theo Espressif, dọn RX trước SYNC, tiêu thụ các response SYNC dư, hiển thị lỗi SYNC chi tiết và thêm `sync-raw`. Chế độ debug in tối đa 64 byte mỗi USB Bulk TX/RX.
-
-\n## V3 Fixed 4 — Termux callback\n\n
-Trên HONOR X7d/Termux hiện tại, `termux-usb -e` truyền USB FD vào
-argument cuối của callback nhưng environment của tiến trình gọi không
-được bảo đảm truyền sang callback. V3 Fixed 4 không còn phụ thuộc vào
-`ESPFLASH_WORKER_ARGS_B64`: mỗi lần flash tạo wrapper tạm chứa các tham
-số nghiệp vụ, sau đó `termux-usb` truyền FD vào wrapper và wrapper chuyển
-FD cùng các tham số sang `usb_worker.py`. Không sử dụng `-E`.\n
-
-## Fixed 6
-Request được ghi atomic vào `.worker_request.json`; request được giữ lại nếu callback/worker thất bại để chẩn đoán. Callback cố định trong `$PREFIX/bin` chuyển FD cuối cùng cho worker.
+Cấu trúc command, checksum, block `0x400`, `FLASH_BEGIN/DATA/END`, `SPI_ATTACH`, `SPI_FLASH_MD5` và `READ_FLASH_SLOW` được đối chiếu với mã nguồn esptool của Espressif. v3 không import esptool và không dùng pyserial.
