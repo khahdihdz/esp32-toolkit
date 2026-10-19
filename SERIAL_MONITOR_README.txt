@@ -1,6 +1,6 @@
 SERIAL MONITOR - ESP32 USB FLASHER v3
 
-Menu: chọn 15. Serial Monitor / trạng thái firmware
+Menu: chọn 9. Serial Monitor
 Baud mặc định: 115200
 Có thể chọn Reset = C để reset bằng DTR/RTS và bắt boot log.
 Ctrl+C để dừng monitor.
